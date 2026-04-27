@@ -1,4 +1,5 @@
 const subjectModel = require("../models/subjectModel");
+const { parseSheet } = require("../middleware/excelHelper");
 
 async function getReferenceData(req, res, next) {
   try {
@@ -31,6 +32,10 @@ async function getAllSubjects(req, res, next) {
 
 async function createSubject(req, res, next) {
   try {
+    const validation = validateSubjectPayload(req.body);
+    if (!validation.valid) {
+      return res.status(400).json({ success: false, message: validation.message });
+    }
     const id = await subjectModel.createSubject(req.body);
     res.status(201).json({ success: true, message: "Subject added successfully.", id });
   } catch (error) {
@@ -40,6 +45,10 @@ async function createSubject(req, res, next) {
 
 async function updateSubject(req, res, next) {
   try {
+    const validation = validateSubjectPayload(req.body);
+    if (!validation.valid) {
+      return res.status(400).json({ success: false, message: validation.message });
+    }
     await subjectModel.updateSubject(req.params.id, req.body);
     res.json({ success: true, message: "Subject updated successfully." });
   } catch (error) {
@@ -182,6 +191,62 @@ async function saveTeacherSubjectAssignment(req, res, next) {
   }
 }
 
+async function uploadSubjects(req, res, next) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "Please upload a .xlsx or .csv file." });
+    }
+
+    const rows = parseSheet(req.file.buffer, req.file.originalname);
+    const subjects = rows.map((row) => ({
+      subject_code: row.subject_code,
+      subject_name: row.subject_name,
+      department_id: Number(row.department_id),
+      semester: Number(row.semester),
+      subject_type: row.subject_type || "Theory Only",
+      credits: Number(row.credits || row.subject_credits || 3),
+      theory_lectures_per_week: Number(row.theory_lectures_per_week || row.number_of_theory_lectures_per_week || 0),
+      lab_sessions_per_week: Number(row.lab_sessions_per_week || row.number_of_lab_sessions_per_week || 0)
+    })).filter((row) => row.subject_code && row.subject_name && row.department_id && row.semester);
+
+    const result = await subjectModel.bulkCreateSubjects(subjects);
+    res.json({
+      success: true,
+      message: `Subject upload completed. Added: ${result.inserted}, Skipped duplicates: ${result.skipped}, Errors: ${result.errors.length}.`,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function downloadSubjectTemplate(req, res) {
+  const csv = "subject_code,subject_name,department_id,semester,subject_type,theory_lectures_per_week,lab_sessions_per_week,credits\nCS999,Sample Subject,1,3,Both Theory + Lab,3,1,4";
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=subjects-template.csv");
+  res.send(csv);
+}
+
+function validateSubjectPayload(payload) {
+  const type = payload.subject_type;
+  const theory = Number(payload.theory_lectures_per_week || 0);
+  const lab = Number(payload.lab_sessions_per_week || 0);
+
+  if (type === "Theory Only" && theory <= 0) {
+    return { valid: false, message: "Theory Only subject must have at least one theory lecture." };
+  }
+
+  if (type === "Lab Only" && lab <= 0) {
+    return { valid: false, message: "Lab Only subject must have at least one lab session." };
+  }
+
+  if (type === "Both Theory + Lab" && (theory <= 0 || lab <= 0)) {
+    return { valid: false, message: "Both Theory + Lab subject must include theory lectures and lab sessions." };
+  }
+
+  return { valid: true };
+}
+
 module.exports = {
   getReferenceData,
   getAllSubjects,
@@ -201,5 +266,7 @@ module.exports = {
   updateSection,
   deleteSection,
   saveClassSubjectAssignment,
-  saveTeacherSubjectAssignment
+  saveTeacherSubjectAssignment,
+  uploadSubjects,
+  downloadSubjectTemplate
 };

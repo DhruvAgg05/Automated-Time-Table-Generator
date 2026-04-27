@@ -23,10 +23,11 @@
         </nav>
       </div>
       <div class="col-lg-10 content-wrap">
-        <div class="d-flex justify-content-between align-items-center mb-4 no-print">
+        <div class="module-header no-print">
           <div>
-            <h1 class="page-title mb-1">Teacher Management</h1>
-            <p class="text-muted mb-0"><span id="currentUserName"></span> | <span id="currentUserRole"></span></p>
+            <span class="section-pill">Faculty Setup</span>
+            <h1 class="page-title mb-1 mt-2">Teacher Management</h1>
+            <p class="page-subtitle"><span id="currentUserName"></span> | <span id="currentUserRole"></span></p>
           </div>
           <button class="btn btn-outline-danger" id="logoutBtn">Logout</button>
         </div>
@@ -39,15 +40,26 @@
                 <form id="teacherForm">
                   <input type="hidden" name="id">
                   <div class="row g-3">
-                    <div class="col-md-6"><input class="form-control" name="teacher_code" placeholder="Teacher Code" required></div>
-                    <div class="col-md-6"><input class="form-control" name="full_name" placeholder="Full Name" required></div>
-                    <div class="col-md-6"><input class="form-control" name="email" type="email" placeholder="Email" required></div>
-                    <div class="col-md-6"><input class="form-control" name="phone" placeholder="Phone"></div>
-                    <div class="col-md-6"><select class="form-select" id="teacherDepartment" name="department_id" required></select></div>
-                    <div class="col-md-6"><input class="form-control" name="designation" placeholder="Designation" required></div>
-                    <div class="col-md-6"><input class="form-control" name="max_lectures_per_day" type="number" min="1" max="6" value="5" required></div>
+                    <div class="col-md-6"><label class="form-label">Teacher Code</label><input class="form-control" name="teacher_code" placeholder="Teacher Code" required></div>
+                    <div class="col-md-6"><label class="form-label">Full Name</label><input class="form-control" name="full_name" placeholder="Full Name" required></div>
+                    <div class="col-md-6"><label class="form-label">Email</label><input class="form-control" name="email" type="email" placeholder="Email" required></div>
+                    <div class="col-md-6"><label class="form-label">Phone</label><input class="form-control" name="phone" placeholder="Phone"></div>
+                    <div class="col-md-6"><label class="form-label">Department</label><select class="form-select" id="teacherDepartment" name="department_id" required></select></div>
+                    <div class="col-md-6"><label class="form-label">Designation</label><input class="form-control" name="designation" placeholder="Designation" required></div>
+                    <div class="col-md-6"><label class="form-label">Max Lectures Per Day</label><input class="form-control" name="max_lectures_per_day" type="number" min="1" max="6" value="5" required></div>
                   </div>
                   <button class="btn btn-primary mt-3">Save Teacher</button>
+                </form>
+              </div>
+            </div>
+            <div class="card panel-card upload-card mt-4">
+              <div class="card-body">
+                <h5 class="mb-2">Bulk Upload Teachers</h5>
+                <p class="mini-note">Upload `.xlsx` or `.csv` for faster entry. Manual form remains available.</p>
+                <form id="teacherUploadForm" class="action-stack">
+                  <input class="form-control" type="file" name="file" accept=".xlsx,.csv" required>
+                  <button class="btn btn-outline-primary">Upload File</button>
+                  <a class="btn btn-outline-secondary" href="/api/teachers/template/download">Download Sample</a>
                 </form>
               </div>
             </div>
@@ -58,19 +70,7 @@
                   <div class="mb-3">
                     <select class="form-select" id="availabilityTeacherId" required></select>
                   </div>
-                  <div class="table-responsive">
-                    <table class="table table-bordered text-center align-middle">
-                      <thead><tr><th>Day</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr></thead>
-                      <tbody>
-                        <tr><th>Monday</th><td><input type="checkbox" id="av-Monday-1"></td><td><input type="checkbox" id="av-Monday-2"></td><td><input type="checkbox" id="av-Monday-3"></td><td><input type="checkbox" id="av-Monday-4"></td><td><input type="checkbox" id="av-Monday-5"></td><td><input type="checkbox" id="av-Monday-6"></td></tr>
-                        <tr><th>Tuesday</th><td><input type="checkbox" id="av-Tuesday-1"></td><td><input type="checkbox" id="av-Tuesday-2"></td><td><input type="checkbox" id="av-Tuesday-3"></td><td><input type="checkbox" id="av-Tuesday-4"></td><td><input type="checkbox" id="av-Tuesday-5"></td><td><input type="checkbox" id="av-Tuesday-6"></td></tr>
-                        <tr><th>Wednesday</th><td><input type="checkbox" id="av-Wednesday-1"></td><td><input type="checkbox" id="av-Wednesday-2"></td><td><input type="checkbox" id="av-Wednesday-3"></td><td><input type="checkbox" id="av-Wednesday-4"></td><td><input type="checkbox" id="av-Wednesday-5"></td><td><input type="checkbox" id="av-Wednesday-6"></td></tr>
-                        <tr><th>Thursday</th><td><input type="checkbox" id="av-Thursday-1"></td><td><input type="checkbox" id="av-Thursday-2"></td><td><input type="checkbox" id="av-Thursday-3"></td><td><input type="checkbox" id="av-Thursday-4"></td><td><input type="checkbox" id="av-Thursday-5"></td><td><input type="checkbox" id="av-Thursday-6"></td></tr>
-                        <tr><th>Friday</th><td><input type="checkbox" id="av-Friday-1"></td><td><input type="checkbox" id="av-Friday-2"></td><td><input type="checkbox" id="av-Friday-3"></td><td><input type="checkbox" id="av-Friday-4"></td><td><input type="checkbox" id="av-Friday-5"></td><td><input type="checkbox" id="av-Friday-6"></td></tr>
-                        <tr><th>Saturday</th><td><input type="checkbox" id="av-Saturday-1"></td><td><input type="checkbox" id="av-Saturday-2"></td><td><input type="checkbox" id="av-Saturday-3"></td><td><input type="checkbox" id="av-Saturday-4"></td><td><input type="checkbox" id="av-Saturday-5"></td><td><input type="checkbox" id="av-Saturday-6"></td></tr>
-                      </tbody>
-                    </table>
-                  </div>
+                  <div class="table-responsive" id="availabilityGridContainer"></div>
                   <button class="btn btn-outline-primary">Save Availability</button>
                 </form>
               </div>
@@ -96,6 +96,7 @@
       </div>
     </div>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/public/js/app.js"></script>
 </body>
 </html>

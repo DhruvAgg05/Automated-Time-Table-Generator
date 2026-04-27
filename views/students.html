@@ -23,10 +23,11 @@
         </nav>
       </div>
       <div class="col-lg-10 content-wrap">
-        <div class="d-flex justify-content-between align-items-center mb-4 no-print">
+        <div class="module-header no-print">
           <div>
-            <h1 class="page-title mb-1">Student Management</h1>
-            <p class="text-muted mb-0"><span id="currentUserName"></span> | <span id="currentUserRole"></span></p>
+            <span class="section-pill">Student Records</span>
+            <h1 class="page-title mb-1 mt-2">Student Management</h1>
+            <p class="page-subtitle"><span id="currentUserName"></span> | <span id="currentUserRole"></span></p>
           </div>
           <button class="btn btn-outline-danger" id="logoutBtn">Logout</button>
         </div>
@@ -39,15 +40,26 @@
                 <form id="studentForm">
                   <input type="hidden" name="id">
                   <div class="row g-3">
-                    <div class="col-12"><input class="form-control" name="roll_number" placeholder="Roll Number" required></div>
-                    <div class="col-12"><input class="form-control" name="full_name" placeholder="Full Name" required></div>
-                    <div class="col-12"><input class="form-control" name="email" type="email" placeholder="Email" required></div>
-                    <div class="col-12"><input class="form-control" name="phone" placeholder="Phone"></div>
-                    <div class="col-12"><select class="form-select" id="studentDepartment" name="department_id" required></select></div>
-                    <div class="col-12"><select class="form-select" id="studentClass" name="class_id" required></select></div>
-                    <div class="col-12"><select class="form-select" id="studentSection" name="section_id" required></select></div>
+                    <div class="col-12"><label class="form-label">Roll Number</label><input class="form-control" name="roll_number" placeholder="Roll Number" required></div>
+                    <div class="col-12"><label class="form-label">Full Name</label><input class="form-control" name="full_name" placeholder="Full Name" required></div>
+                    <div class="col-12"><label class="form-label">Email</label><input class="form-control" name="email" type="email" placeholder="Email" required></div>
+                    <div class="col-12"><label class="form-label">Phone</label><input class="form-control" name="phone" placeholder="Phone"></div>
+                    <div class="col-12"><label class="form-label">Department</label><select class="form-select" id="studentDepartment" name="department_id" required></select></div>
+                    <div class="col-12"><label class="form-label">Class</label><select class="form-select" id="studentClass" name="class_id" required></select></div>
+                    <div class="col-12"><label class="form-label">Section</label><select class="form-select" id="studentSection" name="section_id" required></select></div>
                   </div>
                   <button class="btn btn-primary mt-3">Save Student</button>
+                </form>
+              </div>
+            </div>
+            <div class="card panel-card upload-card mt-4">
+              <div class="card-body">
+                <h5 class="mb-2">Bulk Upload Students</h5>
+                <p class="mini-note">Upload `.xlsx` or `.csv` for quick student entry.</p>
+                <form id="studentUploadForm" class="action-stack">
+                  <input class="form-control" type="file" name="file" accept=".xlsx,.csv" required>
+                  <button class="btn btn-outline-primary">Upload File</button>
+                  <a class="btn btn-outline-secondary" href="/api/students/template/download">Download Sample</a>
                 </form>
               </div>
             </div>
@@ -72,6 +84,7 @@
       </div>
     </div>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/public/js/app.js"></script>
 </body>
 </html>

@@ -1,10 +1,13 @@
 const express = require("express");
 const subjectController = require("../controllers/subjectController");
 const { requireRole } = require("../middleware/authMiddleware");
+const upload = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 
 router.get("/reference-data", requireRole(["admin"]), subjectController.getReferenceData);
+router.get("/template/download", requireRole(["admin"]), subjectController.downloadSubjectTemplate);
+router.post("/upload", requireRole(["admin"]), upload.single("file"), subjectController.uploadSubjects);
 
 router.get("/", requireApiAccess, subjectController.getAllSubjects);
 router.post("/", requireRole(["admin"]), subjectController.createSubject);

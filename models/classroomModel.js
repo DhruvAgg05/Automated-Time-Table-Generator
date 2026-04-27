@@ -43,11 +43,35 @@ async function getRoomUsage() {
   return rows;
 }
 
+async function bulkCreateClassrooms(classrooms) {
+  const results = {
+    inserted: 0,
+    skipped: 0,
+    errors: []
+  };
+
+  for (const classroom of classrooms) {
+    try {
+      await createClassroom(classroom);
+      results.inserted += 1;
+    } catch (error) {
+      if (String(error.message).toLowerCase().includes("duplicate")) {
+        results.skipped += 1;
+      } else {
+        results.errors.push(`${classroom.room_name}: ${error.message}`);
+      }
+    }
+  }
+
+  return results;
+}
+
 module.exports = {
   getAllClassrooms,
   getClassroomById,
   createClassroom,
   updateClassroom,
   deleteClassroom,
-  getRoomUsage
+  getRoomUsage,
+  bulkCreateClassrooms
 };

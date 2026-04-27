@@ -1,6 +1,7 @@
 const path = require("path");
 const express = require("express");
 const session = require("express-session");
+const db = require("./config/db");
 
 const adminRoutes = require("./routes/adminRoutes");
 const teacherRoutes = require("./routes/teacherRoutes");
@@ -81,6 +82,13 @@ app.use((error, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Automated Time Table Management System running on port ${PORT}`);
-});
+db.initializeDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Automated Time Table Management System running on port ${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error("Database initialization failed:", error);
+    process.exit(1);
+  });

@@ -7,14 +7,7 @@ const API = {
   timetable: "/api/timetable"
 };
 
-const SLOT_LABELS = {
-  1: "09:00 - 10:00",
-  2: "10:00 - 11:00",
-  3: "11:15 - 12:15",
-  4: "13:00 - 14:00",
-  5: "14:00 - 15:00",
-  6: "15:15 - 16:15"
-};
+let SLOT_LABELS = {};
 
 let CURRENT_USER = null;
 
@@ -59,10 +52,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function apiFetch(url, options = {}) {
+  const isFormData = options.body instanceof FormData;
+  const headers = isFormData ? (options.headers || {}) : {
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+
   const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers,
     ...options
   });
 
@@ -85,6 +82,13 @@ function showMessage(targetId, message, type = "success") {
     ${message}
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
   </div>`;
+}
+
+function syncSlotLabels(slots) {
+  SLOT_LABELS = {};
+  (slots || []).forEach((slot) => {
+    SLOT_LABELS[slot.slot_number] = `${String(slot.start_time).slice(0, 5)} - ${String(slot.end_time).slice(0, 5)}`;
+  });
 }
 
 function fillSelect(elementId, items, valueKey, labelBuilder, placeholder = "Select") {
@@ -267,6 +271,9 @@ function renderScheduleList(schedule) {
 
 async function initTeachersPage() {
   bindSearch("teacherSearch", "teachersTable");
+  const slotResult = await apiFetch(`${API.timetable}/slots`);
+  syncSlotLabels(slotResult.data);
+  renderAvailabilityGrid(slotResult.data);
   await populateCommonReferenceSelects();
   await loadTeachers();
 
@@ -292,7 +299,8 @@ async function initTeachersPage() {
     const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     const slots = [];
     days.forEach((day) => {
-      for (let slot = 1; slot <= 6; slot += 1) {
+      for (const slotNumber of Object.keys(SLOT_LABELS).map(Number)) {
+        const slot = slotNumber;
         if (document.getElementById(`av-${day}-${slot}`).checked) {
           slots.push({ day_of_week: day, slot_number: slot, is_available: true });
         }
@@ -311,6 +319,40 @@ async function initTeachersPage() {
     const result = await apiFetch(`${API.teachers}/${event.target.value}/availability`);
     populateAvailabilityGrid(result.data);
   });
+
+  document.getElementById("teacherUploadForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const result = await apiFetch(`${API.teachers}/upload`, {
+      method: "POST",
+      body: formData
+    });
+    showMessage("teacherMessage", result.message);
+    event.target.reset();
+    await loadTeachers();
+  });
+}
+
+function renderAvailabilityGrid(slots) {
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  document.getElementById("availabilityGridContainer").innerHTML = `
+    <table class="table table-bordered text-center align-middle">
+      <thead>
+        <tr>
+          <th>Day</th>
+          ${slots.map((slot) => `<th>Slot ${slot.slot_number}<br><small>${String(slot.start_time).slice(0, 5)}-${String(slot.end_time).slice(0, 5)}</small></th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>
+        ${days.map((day) => `
+          <tr>
+            <th>${day}</th>
+            ${slots.map((slot) => `<td><input type="checkbox" id="av-${day}-${slot.slot_number}"></td>`).join("")}
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 async function loadTeachers() {
@@ -381,6 +423,18 @@ async function initStudentsPage() {
     const result = await apiFetch(url, { method, body: JSON.stringify(payload) });
     showMessage("studentMessage", result.message);
     form.reset();
+    await loadStudents();
+  });
+
+  document.getElementById("studentUploadForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const result = await apiFetch(`${API.students}/upload`, {
+      method: "POST",
+      body: formData
+    });
+    showMessage("studentMessage", result.message);
+    event.target.reset();
     await loadStudents();
   });
 }
@@ -479,7 +533,6 @@ async function initSubjectsPage() {
   document.getElementById("classAssignmentForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = Object.fromEntries(new FormData(event.target).entries());
-    payload.required_lectures = Number(payload.required_lectures);
     const result = await apiFetch(`${API.subjects}/class-assignments`, {
       method: "POST",
       body: JSON.stringify(payload)
@@ -496,6 +549,18 @@ async function initSubjectsPage() {
       body: JSON.stringify(payload)
     });
     showMessage("subjectMessage", result.message);
+    await loadSubjectReferenceData();
+  });
+
+  document.getElementById("subjectUploadForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const result = await apiFetch(`${API.subjects}/upload`, {
+      method: "POST",
+      body: formData
+    });
+    showMessage("subjectMessage", result.message);
+    event.target.reset();
     await loadSubjectReferenceData();
   });
 }
@@ -526,7 +591,8 @@ async function loadSubjectReferenceData() {
         <td>${subject.subject_name}</td>
         <td>${subject.department_name}</td>
         <td>${subject.subject_type}</td>
-        <td>${subject.lectures_per_week}</td>
+        <td>${subject.theory_lectures_per_week}</td>
+        <td>${subject.lab_sessions_per_week}</td>
         <td>${subject.credits}</td>
         <td>
           <button class="btn btn-sm btn-outline-primary" onclick='editSubject(${JSON.stringify(subject)})'>Edit</button>
@@ -570,7 +636,7 @@ async function loadSubjectReferenceData() {
     )
     .join("");
   document.getElementById("classAssignmentsList").innerHTML = classAssignments
-    .map((item) => `<li class="list-group-item">${item.class_name} ${item.section_name} -> ${item.subject_name} (${item.required_lectures}/week)</li>`)
+    .map((item) => `<li class="list-group-item">${item.class_name} ${item.section_name} -> ${item.subject_name}</li>`)
     .join("");
   document.getElementById("teacherAssignmentsList").innerHTML = teacherAssignments
     .map((item) => `<li class="list-group-item">${item.teacher_name} -> ${item.subject_name} (${item.class_name} ${item.section_name})</li>`)
@@ -653,6 +719,18 @@ async function initClassroomsPage() {
     event.target.reset();
     await loadClassrooms();
   });
+
+  document.getElementById("classroomUploadForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const result = await apiFetch(`${API.classrooms}/upload`, {
+      method: "POST",
+      body: formData
+    });
+    showMessage("classroomMessage", result.message);
+    event.target.reset();
+    await loadClassrooms();
+  });
 }
 
 async function loadClassrooms() {
@@ -702,11 +780,21 @@ async function initTimetablePage() {
   if (CURRENT_USER.role === "admin") {
     await populateCommonReferenceSelects();
     await loadTimetablePage();
+    await loadSlotTimingSettings();
+    await loadDurationSettings();
+    await loadTeacherFreeGrid();
+    await loadSchedulingSupport();
 
     document.getElementById("generateTimetableBtn").addEventListener("click", async () => {
-      const result = await apiFetch(`${API.timetable}/generate`, { method: "POST" });
-      showMessage("timetableMessage", result.message);
-      await loadTimetablePage();
+      try {
+        const result = await apiFetch(`${API.timetable}/generate`, { method: "POST" });
+        showMessage("timetableMessage", result.message);
+        await loadTimetablePage();
+        await loadTeacherFreeGrid();
+        await loadSchedulingSupport();
+      } catch (error) {
+        showMessage("timetableMessage", error.message, "danger");
+      }
     });
 
     document.getElementById("clearTimetableBtn").addEventListener("click", async () => {
@@ -731,7 +819,56 @@ async function initTimetablePage() {
     document.getElementById("sectionGridSelect").addEventListener("change", async (event) => {
       if (!event.target.value) return;
       const result = await apiFetch(`${API.timetable}/section/${event.target.value}`);
+      syncSlotLabels(result.slots);
       renderTimetableGrid(result.data);
+    });
+
+    document.getElementById("teacherGridSearchBtn").addEventListener("click", async () => {
+      await loadTeacherGrid();
+    });
+
+    document.getElementById("printTeacherGridBtn").addEventListener("click", () => {
+      window.print();
+    });
+
+    document.getElementById("freeTeacherSearchBtn").addEventListener("click", async () => {
+      await loadTeacherFreeGrid();
+    });
+
+    document.getElementById("supportRefreshBtn").addEventListener("click", async () => {
+      await loadSchedulingSupport();
+    });
+
+    document.getElementById("slotTimingForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const payload = Object.fromEntries(new FormData(event.target).entries());
+      const id = payload.id;
+      delete payload.id;
+      payload.slot_number = Number(payload.slot_number);
+      const url = id ? `${API.timetable}/slots/${id}` : `${API.timetable}/slots`;
+      const method = id ? "PUT" : "POST";
+      const result = await apiFetch(url, {
+        method,
+        body: JSON.stringify(payload)
+      });
+      showMessage("timetableMessage", result.message);
+      event.target.reset();
+      await loadSlotTimingSettings();
+      await loadTimetablePage();
+      await loadSchedulingSupport();
+    });
+
+    document.getElementById("durationSettingsForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const payload = Object.fromEntries(new FormData(event.target).entries());
+      payload.lecture_duration_minutes = Number(payload.lecture_duration_minutes);
+      payload.lab_duration_minutes = Number(payload.lab_duration_minutes);
+      const result = await apiFetch(`${API.timetable}/settings`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      showMessage("timetableMessage", result.message);
+      await loadDurationSettings();
     });
 
     return;
@@ -742,6 +879,8 @@ async function initTimetablePage() {
   document.getElementById("manualOverridePanel").classList.add("hidden");
 
   if (CURRENT_USER.role === "teacher") {
+    const timetableMeta = await apiFetch(API.timetable);
+    syncSlotLabels(timetableMeta.slots);
     const result = await apiFetch(`${API.teachers}/portal/me`);
     renderPortalTimetableRows(result.data.schedule, "teacher");
     renderTimetableGrid(result.data.schedule);
@@ -749,6 +888,8 @@ async function initTimetablePage() {
     return;
   }
 
+  const timetableMeta = await apiFetch(API.timetable);
+  syncSlotLabels(timetableMeta.slots);
   const result = await apiFetch(`${API.students}/portal/me`);
   renderPortalTimetableRows(result.data, "student");
   renderTimetableGrid(result.data);
@@ -765,6 +906,7 @@ async function loadTimetablePage() {
 
   const rows = timetableResult.data;
   const { classes, sections, subjects } = referenceData.data;
+  syncSlotLabels(timetableResult.slots);
 
   fillSelect("editClassId", classes, "id", (item) => item.class_name, "Select Class");
   fillSelect("editSectionId", sections, "id", (item) => `${item.class_name} ${item.section_name}`, "Select Section");
@@ -772,6 +914,8 @@ async function loadTimetablePage() {
   fillSelect("editTeacherId", teacherData.data, "id", (item) => item.full_name, "Select Teacher");
   fillSelect("editClassroomId", roomData.data, "id", (item) => item.room_name, "Select Room");
   fillSelect("sectionGridSelect", sections, "id", (item) => `${item.class_name} ${item.section_name}`, "Select Section");
+  fillSelect("editSlot", timetableResult.slots, "slot_number", (item) => `Slot ${item.slot_number} (${String(item.start_time).slice(0, 5)} - ${String(item.end_time).slice(0, 5)})`, "Select Slot");
+  fillSelect("supportSlotSelect", timetableResult.slots, "slot_number", (item) => `Slot ${item.slot_number} (${String(item.start_time).slice(0, 5)} - ${String(item.end_time).slice(0, 5)})`, "Select Slot");
 
   document.getElementById("timetableRows").innerHTML = rows
     .map(
@@ -792,6 +936,123 @@ async function loadTimetablePage() {
     .join("");
 }
 
+async function loadSlotTimingSettings() {
+  const result = await apiFetch(`${API.timetable}/slots`);
+  syncSlotLabels(result.data);
+  document.getElementById("slotTimingRows").innerHTML = result.data
+    .map(
+      (slot) => `<tr>
+        <td>${slot.slot_number}</td>
+        <td>${String(slot.start_time).slice(0, 5)}</td>
+        <td>${String(slot.end_time).slice(0, 5)}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary" onclick='editSlotTiming(${JSON.stringify(slot)})'>Edit</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteSlotTiming(${slot.id})">Delete</button>
+        </td>
+      </tr>`
+    )
+    .join("");
+}
+
+async function loadDurationSettings() {
+  const result = await apiFetch(`${API.timetable}/settings`);
+  document.getElementById("lectureDurationMinutes").value = result.data.lecture_duration_minutes;
+  document.getElementById("labDurationMinutes").value = result.data.lab_duration_minutes;
+}
+
+async function loadTeacherGrid() {
+  const search = document.getElementById("teacherSearchInput").value.trim();
+  if (!search) {
+    document.getElementById("teacherGridContainer").innerHTML = '<p class="text-muted mb-0">Enter a teacher name or code to view the weekly grid.</p>';
+    document.getElementById("teacherGridSummary").innerHTML = "";
+    return;
+  }
+
+  try {
+    const result = await apiFetch(`${API.timetable}/teacher-grid?search=${encodeURIComponent(search)}`);
+    syncSlotLabels(result.slots);
+    renderTeacherTimetableGrid(result.data.entries);
+    document.getElementById("teacherGridSummary").innerHTML = `
+      <strong>${result.data.teacher.teacher_code} - ${result.data.teacher.full_name}</strong><br>
+      Assigned Periods: ${result.data.summary.assigned_periods} |
+      Free Periods: ${result.data.summary.free_periods} |
+      Available Periods: ${result.data.summary.available_periods} |
+      Unavailable Periods: ${result.data.summary.unavailable_periods}
+    `;
+  } catch (error) {
+    document.getElementById("teacherGridContainer").innerHTML = `<div class="alert alert-danger mb-0">${error.message}</div>`;
+    document.getElementById("teacherGridSummary").innerHTML = "";
+  }
+}
+
+async function loadTeacherFreeGrid() {
+  const search = document.getElementById("freeTeacherSearchInput").value.trim();
+  try {
+    const result = await apiFetch(`${API.timetable}/teacher-free-grid?search=${encodeURIComponent(search)}`);
+    renderFreeTeacherGrid(result.data.grid, result.data.totalTeachers);
+  } catch (error) {
+    document.getElementById("freeTeacherGridContainer").innerHTML = `<div class="alert alert-danger mb-0">${error.message}</div>`;
+  }
+}
+
+async function loadSchedulingSupport() {
+  const day = document.getElementById("supportDaySelect").value;
+  const slot = document.getElementById("supportSlotSelect").value;
+  const search = document.getElementById("supportTeacherSearch").value.trim();
+  if (!slot) {
+    return;
+  }
+
+  try {
+    const result = await apiFetch(
+      `${API.timetable}/support?day=${encodeURIComponent(day)}&slot=${encodeURIComponent(slot)}&search=${encodeURIComponent(search)}`
+    );
+
+    document.getElementById("supportSummary").innerHTML = `
+      <div class="mb-3 mini-note">
+        Showing scheduling support for <strong>${result.data.selectedDay}</strong>,
+        <strong>${String(result.data.selectedSlot.start_time).slice(0, 5)} - ${String(result.data.selectedSlot.end_time).slice(0, 5)}</strong>.
+      </div>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="border rounded-3 p-3 h-100">
+            <h6>Free Teachers (${result.data.freeTeachers.length})</h6>
+            <ul class="list-group list-group-flush">${renderListItems(result.data.freeTeachers.map((teacher) => `${teacher.teacher_code} - ${teacher.full_name}`), "No free teachers found.")}</ul>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded-3 p-3 h-100">
+            <h6>Free Classrooms (${result.data.freeClassrooms.length})</h6>
+            <ul class="list-group list-group-flush">${renderListItems(result.data.freeClassrooms.map((room) => `${room.room_name} (${room.capacity})`), "No free classrooms found.")}</ul>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded-3 p-3 h-100">
+            <h6>Free Labs (${result.data.freeLabs.length})</h6>
+            <ul class="list-group list-group-flush">${renderListItems(result.data.freeLabs.map((room) => `${room.room_name} (${room.capacity})`), "No free labs found.")}</ul>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="border rounded-3 p-3">
+            <h6>Near Overload Teachers (${result.data.overloadedTeachers.length})</h6>
+            <ul class="list-group list-group-flush">${renderListItems(result.data.overloadedTeachers.map((teacher) => `${teacher.teacher_code} - ${teacher.full_name} (${teacher.assigned_periods}/${teacher.weekly_capacity} periods)`), "No overloaded teachers right now.")}</ul>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (error) {
+    document.getElementById("supportSummary").innerHTML = `<div class="alert alert-danger mb-0">${error.message}</div>`;
+  }
+}
+
+function renderListItems(items, emptyMessage) {
+  if (!items.length) {
+    return `<li class="list-group-item">${emptyMessage}</li>`;
+  }
+
+  return items.map((item) => `<li class="list-group-item">${item}</li>`).join("");
+}
+
 window.editTimetableEntry = function editTimetableEntry(entry) {
   document.getElementById("editTimetableId").value = entry.id;
   document.getElementById("editClassId").value = entry.class_id;
@@ -805,6 +1066,22 @@ window.editTimetableEntry = function editTimetableEntry(entry) {
   document.getElementById("editEndTime").value = String(entry.end_time).slice(0, 5);
 };
 
+window.editSlotTiming = function editSlotTiming(slot) {
+  document.getElementById("slotTimingId").value = slot.id;
+  document.getElementById("slotNumber").value = slot.slot_number;
+  document.getElementById("slotStartTime").value = String(slot.start_time).slice(0, 5);
+  document.getElementById("slotEndTime").value = String(slot.end_time).slice(0, 5);
+};
+
+window.deleteSlotTiming = async function deleteSlotTiming(id) {
+  if (!window.confirm("Delete this slot timing?")) return;
+  const result = await apiFetch(`${API.timetable}/slots/${id}`, { method: "DELETE" });
+  showMessage("timetableMessage", result.message);
+  document.getElementById("slotTimingForm").reset();
+  await loadSlotTimingSettings();
+  await loadTimetablePage();
+};
+
 window.deleteTimetableEntry = async function deleteTimetableEntry(id) {
   if (!window.confirm("Delete this timetable entry?")) return;
   const result = await apiFetch(`${API.timetable}/${id}`, { method: "DELETE" });
@@ -814,7 +1091,9 @@ window.deleteTimetableEntry = async function deleteTimetableEntry(id) {
 
 function renderTimetableGrid(entries) {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const slots = [1, 2, 3, 4, 5, 6];
+  const slots = Object.keys(SLOT_LABELS)
+    .map(Number)
+    .sort((a, b) => a - b);
 
   const html = `<table class="table table-bordered timetable-grid">
     <thead>
@@ -841,6 +1120,69 @@ function renderTimetableGrid(entries) {
   </table>`;
 
   document.getElementById("gridContainer").innerHTML = html;
+}
+
+function renderTeacherTimetableGrid(entries) {
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const slots = Object.keys(SLOT_LABELS)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  const html = `<table class="table table-bordered timetable-grid">
+    <thead>
+      <tr>
+        <th>Time / Day</th>
+        ${days.map((day) => `<th>${day}</th>`).join("")}
+      </tr>
+    </thead>
+    <tbody>
+      ${slots
+        .map(
+          (slot) => `<tr>
+            <th>${SLOT_LABELS[slot]}</th>
+            ${days
+              .map((day) => {
+                const match = entries.find((item) => item.day_of_week === day && Number(item.slot_number) === slot);
+                return `<td>${match ? `<div class="grid-cell"><strong>${match.subject_name}</strong><br>${match.class_name} ${match.section_name}<br>${match.room_name}</div>` : "-"}</td>`;
+              })
+              .join("")}
+          </tr>`
+        )
+        .join("")}
+    </tbody>
+  </table>`;
+
+  document.getElementById("teacherGridContainer").innerHTML = html;
+}
+
+function renderFreeTeacherGrid(grid, totalTeachers = 0) {
+  const slots = Object.keys(SLOT_LABELS)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  const html = `
+    <div class="mini-note mb-3">Showing free teachers from ${totalTeachers} teacher records across all configured days and slots.</div>
+    <table class="table table-bordered timetable-grid">
+    <thead>
+      <tr>
+        <th>Time / Day</th>
+        ${grid.map((day) => `<th>${day.day}</th>`).join("")}
+      </tr>
+    </thead>
+    <tbody>
+      ${slots
+        .map((slotNumber) => `<tr>
+          <th>${SLOT_LABELS[slotNumber]}</th>
+          ${grid.map((day) => {
+            const slot = day.slots.find((entry) => Number(entry.slot_number) === slotNumber);
+            const teachers = slot?.free_teachers || [];
+            return `<td>${teachers.length ? `<div class="grid-cell">${teachers.map((teacher) => `<div>${teacher.teacher_code} ${teacher.full_name}</div>`).join("")}</div>` : "-"}</td>`;
+          }).join("")}
+        </tr>`).join("")}
+    </tbody>
+  </table>`;
+
+  document.getElementById("freeTeacherGridContainer").innerHTML = html;
 }
 
 function renderPortalTimetableRows(entries, role) {

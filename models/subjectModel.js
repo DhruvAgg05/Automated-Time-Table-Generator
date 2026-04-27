@@ -17,18 +17,21 @@ async function getSubjectById(id) {
 }
 
 async function createSubject(data) {
+  const normalized = normalizeSubjectPayload(data);
   const [result] = await pool.query(
     `INSERT INTO subjects
-      (subject_code, subject_name, department_id, semester, subject_type, credits, lectures_per_week)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      (subject_code, subject_name, department_id, semester, subject_type, credits, lectures_per_week, theory_lectures_per_week, lab_sessions_per_week)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      data.subject_code,
-      data.subject_name,
-      data.department_id,
-      data.semester,
-      data.subject_type,
-      data.credits,
-      data.lectures_per_week
+      normalized.subject_code,
+      normalized.subject_name,
+      normalized.department_id,
+      normalized.semester,
+      normalized.subject_type,
+      normalized.credits,
+      normalized.lectures_per_week,
+      normalized.theory_lectures_per_week,
+      normalized.lab_sessions_per_week
     ]
   );
 
@@ -36,18 +39,22 @@ async function createSubject(data) {
 }
 
 async function updateSubject(id, data) {
+  const normalized = normalizeSubjectPayload(data);
   await pool.query(
     `UPDATE subjects
-     SET subject_code = ?, subject_name = ?, department_id = ?, semester = ?, subject_type = ?, credits = ?, lectures_per_week = ?
+     SET subject_code = ?, subject_name = ?, department_id = ?, semester = ?, subject_type = ?, credits = ?, lectures_per_week = ?,
+         theory_lectures_per_week = ?, lab_sessions_per_week = ?
      WHERE id = ?`,
     [
-      data.subject_code,
-      data.subject_name,
-      data.department_id,
-      data.semester,
-      data.subject_type,
-      data.credits,
-      data.lectures_per_week,
+      normalized.subject_code,
+      normalized.subject_name,
+      normalized.department_id,
+      normalized.semester,
+      normalized.subject_type,
+      normalized.credits,
+      normalized.lectures_per_week,
+      normalized.theory_lectures_per_week,
+      normalized.lab_sessions_per_week,
       id
     ]
   );
@@ -152,11 +159,16 @@ async function getClassSubjectAssignments() {
 }
 
 async function saveClassSubjectAssignment(data) {
+  const [[subject]] = await pool.query(
+    "SELECT theory_lectures_per_week, lab_sessions_per_week FROM subjects WHERE id = ?",
+    [data.subject_id]
+  );
+  const requiredLectures = Number(subject?.theory_lectures_per_week || 0) + Number(subject?.lab_sessions_per_week || 0);
   const [result] = await pool.query(
     `INSERT INTO class_subjects (class_id, section_id, subject_id, required_lectures)
      VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE required_lectures = VALUES(required_lectures), class_id = VALUES(class_id)`,
-    [data.class_id, data.section_id, data.subject_id, data.required_lectures]
+    [data.class_id, data.section_id, data.subject_id, requiredLectures]
   );
 
   return result.insertId;
@@ -188,6 +200,60 @@ async function saveTeacherSubjectAssignment(data) {
   return result.insertId;
 }
 
+async function bulkCreateSubjects(subjects) {
+  const results = {
+    inserted: 0,
+    skipped: 0,
+    errors: []
+  };
+
+  for (const subject of subjects) {
+    try {
+      await createSubject(subject);
+      results.inserted += 1;
+    } catch (error) {
+      if (String(error.message).toLowerCase().includes("duplicate")) {
+        results.skipped += 1;
+      } else {
+        results.errors.push(`${subject.subject_code || subject.subject_name}: ${error.message}`);
+      }
+    }
+  }
+
+  return results;
+}
+
+function normalizeSubjectPayload(data) {
+  const subjectType = data.subject_type || "Theory Only";
+  let theoryLectures = Number(data.theory_lectures_per_week || 0);
+  let labSessions = Number(data.lab_sessions_per_week || 0);
+
+  if (subjectType === "Theory Only") {
+    labSessions = 0;
+  }
+
+  if (subjectType === "Lab Only") {
+    theoryLectures = 0;
+  }
+
+  if (subjectType === "Both Theory + Lab") {
+    theoryLectures = Math.max(0, theoryLectures);
+    labSessions = Math.max(0, labSessions);
+  }
+
+  return {
+    subject_code: data.subject_code,
+    subject_name: data.subject_name,
+    department_id: Number(data.department_id),
+    semester: Number(data.semester),
+    subject_type: subjectType,
+    credits: Number(data.credits || 0),
+    theory_lectures_per_week: theoryLectures,
+    lab_sessions_per_week: labSessions,
+    lectures_per_week: theoryLectures + labSessions
+  };
+}
+
 module.exports = {
   getAllSubjects,
   getSubjectById,
@@ -209,5 +275,6 @@ module.exports = {
   getClassSubjectAssignments,
   saveClassSubjectAssignment,
   getTeacherSubjectAssignments,
-  saveTeacherSubjectAssignment
+  saveTeacherSubjectAssignment,
+  bulkCreateSubjects
 };

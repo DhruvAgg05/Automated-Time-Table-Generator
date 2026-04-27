@@ -90,8 +90,10 @@ CREATE TABLE subjects (
   subject_name VARCHAR(120) NOT NULL,
   department_id INT NOT NULL,
   semester INT NOT NULL,
-  subject_type ENUM('Theory', 'Lab') NOT NULL DEFAULT 'Theory',
+  subject_type ENUM('Theory Only', 'Lab Only', 'Both Theory + Lab') NOT NULL DEFAULT 'Theory Only',
   credits INT NOT NULL DEFAULT 3,
+  theory_lectures_per_week INT NOT NULL DEFAULT 0,
+  lab_sessions_per_week INT NOT NULL DEFAULT 0,
   lectures_per_week INT NOT NULL DEFAULT 3,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_subjects_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT
@@ -142,6 +144,21 @@ CREATE TABLE teacher_availability (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_teacher_availability_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
   CONSTRAINT uq_teacher_availability UNIQUE (teacher_id, day_of_week, slot_number)
+);
+
+CREATE TABLE slot_timings (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  slot_number INT NOT NULL UNIQUE,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE timetable_settings (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  lecture_duration_minutes INT NOT NULL DEFAULT 60,
+  lab_duration_minutes INT NOT NULL DEFAULT 120,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE timetable (
@@ -217,12 +234,12 @@ INSERT INTO users (username, password_hash, role, teacher_id, student_id) VALUES
 ('student1', '$2a$10$x6Vb6Poz2waSPl.X2x.EMO6kjV7/IFqYtQ.6VeDMi1dvjyWkQAPq2', 'student', NULL, 1),
 ('student2', '$2a$10$x6Vb6Poz2waSPl.X2x.EMO6kjV7/IFqYtQ.6VeDMi1dvjyWkQAPq2', 'student', NULL, 4);
 
-INSERT INTO subjects (subject_code, subject_name, department_id, semester, subject_type, credits, lectures_per_week) VALUES
-('CS301', 'Data Structures', 1, 3, 'Theory', 4, 4),
-('CS302', 'Database Management Systems', 1, 3, 'Theory', 4, 4),
-('CS303', 'Object Oriented Programming Lab', 1, 3, 'Lab', 2, 2),
-('CS501', 'Operating Systems', 1, 5, 'Theory', 4, 4),
-('IT301', 'Web Technologies', 2, 3, 'Theory', 3, 3);
+INSERT INTO subjects (subject_code, subject_name, department_id, semester, subject_type, credits, theory_lectures_per_week, lab_sessions_per_week, lectures_per_week) VALUES
+('CS301', 'Data Structures', 1, 3, 'Theory Only', 4, 4, 0, 4),
+('CS302', 'Database Management Systems', 1, 3, 'Both Theory + Lab', 4, 3, 1, 4),
+('CS303', 'Object Oriented Programming', 1, 3, 'Lab Only', 2, 0, 1, 1),
+('CS501', 'Operating Systems', 1, 5, 'Theory Only', 4, 4, 0, 4),
+('IT301', 'Web Technologies', 2, 3, 'Theory Only', 3, 3, 0, 3);
 
 INSERT INTO class_subjects (class_id, section_id, subject_id, required_lectures) VALUES
 (1, 1, 1, 4),
@@ -270,6 +287,17 @@ INSERT INTO teacher_availability (teacher_id, day_of_week, slot_number, is_avail
 (4, 'Monday', 1, 1),
 (4, 'Wednesday', 2, 1),
 (4, 'Friday', 3, 1);
+
+INSERT INTO slot_timings (slot_number, start_time, end_time) VALUES
+(1, '09:00:00', '10:00:00'),
+(2, '10:00:00', '11:00:00'),
+(3, '11:15:00', '12:15:00'),
+(4, '13:00:00', '14:00:00'),
+(5, '14:00:00', '15:00:00'),
+(6, '15:15:00', '16:15:00');
+
+INSERT INTO timetable_settings (lecture_duration_minutes, lab_duration_minutes) VALUES
+(60, 120);
 
 INSERT INTO timetable (
   class_id, section_id, subject_id, teacher_id, classroom_id, day_of_week, slot_number, start_time, end_time, created_by, is_manual_override

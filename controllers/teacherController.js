@@ -1,4 +1,5 @@
 const teacherModel = require("../models/teacherModel");
+const { parseSheet } = require("../middleware/excelHelper");
 
 async function getAllTeachers(req, res, next) {
   try {
@@ -85,6 +86,41 @@ async function getTeacherPortal(req, res, next) {
   }
 }
 
+async function uploadTeachers(req, res, next) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "Please upload a .xlsx or .csv file." });
+    }
+
+    const rows = parseSheet(req.file.buffer, req.file.originalname);
+    const teachers = rows.map((row) => ({
+      teacher_code: row.teacher_code,
+      full_name: row.full_name,
+      email: row.email,
+      phone: row.phone,
+      department_id: Number(row.department_id),
+      designation: row.designation,
+      max_lectures_per_day: Number(row.max_lectures_per_day || 5)
+    })).filter((row) => row.teacher_code && row.full_name && row.email && row.department_id && row.designation);
+
+    const result = await teacherModel.bulkCreateTeachers(teachers);
+    res.json({
+      success: true,
+      message: `Teacher upload completed. Added: ${result.inserted}, Skipped duplicates: ${result.skipped}, Errors: ${result.errors.length}.`,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function downloadTeacherTemplate(req, res) {
+  const csv = "teacher_code,full_name,email,phone,department_id,designation,max_lectures_per_day\nT100,Dr. Sample,sample.teacher@example.com,9876543210,1,Assistant Professor,5";
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=teachers-template.csv");
+  res.send(csv);
+}
+
 module.exports = {
   getAllTeachers,
   createTeacher,
@@ -92,5 +128,7 @@ module.exports = {
   deleteTeacher,
   getAvailability,
   saveAvailability,
-  getTeacherPortal
+  getTeacherPortal,
+  uploadTeachers,
+  downloadTeacherTemplate
 };

@@ -122,6 +122,29 @@ async function getTeacherAssignedSubjects(teacherId) {
   return rows;
 }
 
+async function bulkCreateTeachers(teachers) {
+  const results = {
+    inserted: 0,
+    skipped: 0,
+    errors: []
+  };
+
+  for (const teacher of teachers) {
+    try {
+      await createTeacher(teacher);
+      results.inserted += 1;
+    } catch (error) {
+      if (String(error.message).toLowerCase().includes("duplicate")) {
+        results.skipped += 1;
+      } else {
+        results.errors.push(`${teacher.teacher_code || teacher.email}: ${error.message}`);
+      }
+    }
+  }
+
+  return results;
+}
+
 module.exports = {
   getAllTeachers,
   getTeacherById,
@@ -131,5 +154,6 @@ module.exports = {
   getTeacherAvailability,
   replaceTeacherAvailability,
   getTeacherSchedule,
-  getTeacherAssignedSubjects
+  getTeacherAssignedSubjects,
+  bulkCreateTeachers
 };

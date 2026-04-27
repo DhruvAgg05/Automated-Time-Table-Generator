@@ -84,11 +84,35 @@ async function getStudentSchedule(studentId) {
   return rows;
 }
 
+async function bulkCreateStudents(students) {
+  const results = {
+    inserted: 0,
+    skipped: 0,
+    errors: []
+  };
+
+  for (const student of students) {
+    try {
+      await createStudent(student);
+      results.inserted += 1;
+    } catch (error) {
+      if (String(error.message).toLowerCase().includes("duplicate")) {
+        results.skipped += 1;
+      } else {
+        results.errors.push(`${student.roll_number || student.email}: ${error.message}`);
+      }
+    }
+  }
+
+  return results;
+}
+
 module.exports = {
   getAllStudents,
   getStudentById,
   createStudent,
   updateStudent,
   deleteStudent,
-  getStudentSchedule
+  getStudentSchedule,
+  bulkCreateStudents
 };
