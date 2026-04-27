@@ -1,0 +1,138 @@
+:root {
+  --primary: #0b5ed7;
+  --secondary: #0f172a;
+  --soft-bg: #f4f7fb;
+  --card-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+  --border-soft: #dbe4f0;
+}
+
+body {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(180deg, #eef4ff 0%, #f8fbff 45%, #f4f7fb 100%);
+  color: #1f2937;
+  min-height: 100vh;
+}
+
+.brand-strip {
+  background: linear-gradient(135deg, #0b5ed7, #0f3e91);
+  color: #fff;
+}
+
+.page-shell {
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #0f172a;
+  min-height: 100vh;
+  color: #fff;
+}
+
+.sidebar .nav-link {
+  color: rgba(255, 255, 255, 0.78);
+  border-radius: 10px;
+  margin-bottom: 0.35rem;
+}
+
+.sidebar .nav-link.active,
+.sidebar .nav-link:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.content-wrap {
+  padding: 1.5rem;
+}
+
+.dashboard-card,
+.panel-card,
+.login-card {
+  border: 0;
+  border-radius: 18px;
+  box-shadow: var(--card-shadow);
+}
+
+.dashboard-card .card-body {
+  padding: 1.5rem;
+}
+
+.card-metric {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--secondary);
+}
+
+.page-title {
+  font-weight: 700;
+  color: var(--secondary);
+}
+
+.toolbar-card {
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.data-table thead th {
+  white-space: nowrap;
+  background: #eaf2ff;
+}
+
+.badge-soft {
+  background: #e7f0ff;
+  color: #0b5ed7;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+}
+
+.timetable-grid th,
+.timetable-grid td {
+  min-width: 150px;
+  vertical-align: middle;
+}
+
+.grid-cell {
+  background: #fff;
+  border-radius: 12px;
+  padding: 0.6rem;
+  border: 1px solid #e5edf8;
+}
+
+.login-layout {
+  min-height: 100vh;
+}
+
+.login-panel {
+  background:
+    radial-gradient(circle at top right, rgba(11, 94, 215, 0.15), transparent 35%),
+    linear-gradient(145deg, #ffffff, #eef5ff);
+}
+
+.hero-stat {
+  border-left: 4px solid var(--primary);
+  padding-left: 1rem;
+}
+
+.section-heading {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--secondary);
+}
+
+.hidden {
+  display: none !important;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .content-wrap {
+    padding: 0;
+  }
+}
