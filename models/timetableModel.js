@@ -569,7 +569,13 @@ async function generateTimetable(adminId) {
     }
 
     await connection.commit();
-    return { inserted: state.assignments.length };
+    const consecutiveWarnings = countTeacherConsecutiveWarnings(state.assignments);
+    return {
+      inserted: state.assignments.length,
+      warnings: consecutiveWarnings
+        ? [`${consecutiveWarnings} teacher back-to-back slot pair(s) were used because a fully break-friendly schedule was not possible for every assignment.`]
+        : []
+    };
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -633,6 +639,26 @@ function getSuitableRooms(classrooms, requiredType, strength) {
   }
 
   return preferred.sort((left, right) => left.capacity - right.capacity);
+}
+
+function countTeacherAdjacentAssignments(teacherBusySet, teacherId, day, slotNumbers) {
+  const currentSlots = new Set(slotNumbers.map(Number));
+  let adjacentCount = 0;
+
+  slotNumbers.forEach((slotNumber) => {
+    const previousSlot = Number(slotNumber) - 1;
+    const nextSlot = Number(slotNumber) + 1;
+
+    if (!currentSlots.has(previousSlot) && teacherBusySet.has(`${teacherId}-${day}-${previousSlot}`)) {
+      adjacentCount += 1;
+    }
+
+    if (!currentSlots.has(nextSlot) && teacherBusySet.has(`${teacherId}-${day}-${nextSlot}`)) {
+      adjacentCount += 1;
+    }
+  });
+
+  return adjacentCount;
 }
 
 function collectTaskCandidates(task, context, state) {
@@ -706,7 +732,8 @@ function collectTaskCandidates(task, context, state) {
           slotNumbers,
           slotRecords: slotWindow,
           teacherLoadKey,
-          currentLoad
+          currentLoad,
+          adjacencyPenalty: countTeacherAdjacentAssignments(state.teacherBusy, task.teacher_id, day, slotNumbers)
         });
       });
     }
@@ -714,6 +741,10 @@ function collectTaskCandidates(task, context, state) {
 
   return {
     candidates: candidates.sort((left, right) => {
+      if (left.adjacencyPenalty !== right.adjacencyPenalty) {
+        return left.adjacencyPenalty - right.adjacencyPenalty;
+      }
+
       if (left.currentLoad !== right.currentLoad) {
         return left.currentLoad - right.currentLoad;
       }
@@ -726,6 +757,31 @@ function collectTaskCandidates(task, context, state) {
     }),
     blockerSummary
   };
+}
+
+function countTeacherConsecutiveWarnings(assignments) {
+  const grouped = new Map();
+
+  assignments.forEach((row) => {
+    const [,,, teacherId,, day, slotNumber] = row;
+    const key = `${teacherId}-${day}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key).push(Number(slotNumber));
+  });
+
+  let consecutivePairs = 0;
+  grouped.forEach((slots) => {
+    const sorted = [...new Set(slots)].sort((left, right) => left - right);
+    for (let index = 1; index < sorted.length; index += 1) {
+      if (sorted[index] === sorted[index - 1] + 1) {
+        consecutivePairs += 1;
+      }
+    }
+  });
+
+  return consecutivePairs;
 }
 
 function formatTaskLabel(task) {
@@ -1106,6 +1162,711 @@ async function getSchedulingSupportView(day, slotNumber, search = "") {
   };
 }
 
+function getDayFromDate(dateValue) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  const labels = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return labels[date.getDay()];
+}
+
+function rangesOverlap(startA, endA, startB, endB) {
+  return !(Number(endA) < Number(startB) || Number(startA) > Number(endB));
+}
+
+async function cleanupExpiredExtraLectureRequests(connection = pool) {
+  await connection.query(
+    `UPDATE extra_lecture_requests
+     SET status = 'Completed', notification_message = NULL, notification_seen = 1
+     WHERE status = 'Approved'
+       AND (
+         requested_date < CURDATE()
+         OR (requested_date = CURDATE() AND end_time < CURTIME())
+       )`
+  );
+}
+
+async function getTeacherRequestableSubjects(teacherId) {
+  const [rows] = await pool.query(
+    `SELECT ts.teacher_id, ts.subject_id, ts.class_id, ts.section_id,
+            s.subject_name, s.subject_code, s.subject_type,
+            c.class_name, sec.section_name
+     FROM teacher_subjects ts
+     JOIN subjects s ON ts.subject_id = s.id
+     JOIN classes c ON ts.class_id = c.id
+     JOIN sections sec ON ts.section_id = sec.id
+     WHERE ts.teacher_id = ?
+     ORDER BY c.class_name, sec.section_name, s.subject_name`,
+    [teacherId]
+  );
+
+  return rows;
+}
+
+async function getActiveExtraRequests(connection, requestedDate) {
+  const [rows] = await connection.query(
+    `SELECT request_id, teacher_id, class_id, section_id, room_id, requested_day, requested_date,
+            slot_number, end_slot_number, start_time, end_time, status
+     FROM extra_lecture_requests
+     WHERE status = 'Approved'
+       AND requested_date = ?`,
+    [requestedDate]
+  );
+
+  return rows;
+}
+
+async function getRegularTimetableForDay(connection, requestedDay) {
+  const [rows] = await connection.query(
+    `SELECT id, teacher_id, class_id, section_id, classroom_id AS room_id, day_of_week,
+            slot_number, slot_number AS end_slot_number, start_time, end_time
+     FROM timetable
+     WHERE day_of_week = ?`,
+    [requestedDay]
+  );
+
+  return rows;
+}
+
+function buildSlotRange(slotRows, startSlotNumber, endSlotNumber) {
+  const sortedSlots = slotRows
+    .filter((slot) => Number(slot.slot_number) >= Number(startSlotNumber) && Number(slot.slot_number) <= Number(endSlotNumber))
+    .sort((left, right) => Number(left.slot_number) - Number(right.slot_number));
+
+  if (!sortedSlots.length || sortedSlots.length !== (Number(endSlotNumber) - Number(startSlotNumber) + 1)) {
+    throw createGenerationError(
+      "Selected slot range is invalid.",
+      [
+        "Choose valid start and end slots from the configured slot timings.",
+        "Check whether the selected slots exist in slot settings."
+      ]
+    );
+  }
+
+  for (let index = 1; index < sortedSlots.length; index += 1) {
+    const previous = sortedSlots[index - 1];
+    const current = sortedSlots[index];
+    if (String(previous.end_time).slice(0, 8) !== String(current.start_time).slice(0, 8)) {
+      throw createGenerationError(
+        "Selected slots are not consecutive.",
+        [
+          "Choose directly connected slots for temporary lectures or labs.",
+          "Update slot timings if your schedule has a different continuous block structure."
+        ]
+      );
+    }
+  }
+
+  return sortedSlots;
+}
+
+function validateTemporaryRequestSlots(slotRows, requestType, settings) {
+  const totalDuration = slotRows.reduce((total, slot) => total + durationMinutes(slot.start_time, slot.end_time), 0);
+  const expectedDuration = requestType === "Lab"
+    ? Number(settings.lab_duration_minutes)
+    : Number(settings.lecture_duration_minutes);
+
+  if (totalDuration !== expectedDuration) {
+    throw createGenerationError(
+      `${requestType} duration does not match the configured slot duration.`,
+      [
+        `Select slots totaling exactly ${expectedDuration} minutes.`,
+        "Adjust lecture or lab duration settings if the college policy changed.",
+        "Review slot timing configuration before submitting the request."
+      ],
+      { totalDuration, expectedDuration }
+    );
+  }
+
+  return {
+    start_time: slotRows[0].start_time,
+    end_time: slotRows[slotRows.length - 1].end_time,
+    totalDuration
+  };
+}
+
+function buildOccupancyLookup(rows) {
+  return {
+    teacherBusy: new Set(rows.map((row) => `${row.teacher_id}-${row.slot_number}-${row.end_slot_number}`)),
+    roomBusy: new Set(rows.filter((row) => row.room_id).map((row) => `${row.room_id}-${row.slot_number}-${row.end_slot_number}`)),
+    sectionBusy: new Set(rows.map((row) => `${row.section_id}-${row.slot_number}-${row.end_slot_number}`))
+  };
+}
+
+function rowOverlapsRequest(row, slotStart, slotEnd) {
+  return rangesOverlap(row.slot_number, row.end_slot_number, slotStart, slotEnd);
+}
+
+async function getAvailabilityAndOccupancyForDate(requestedDate, teacherId) {
+  await cleanupExpiredExtraLectureRequests();
+  const requestedDay = getDayFromDate(requestedDate);
+  const [slots, settings, classrooms, teacherAvailabilityRows, regularRows, extraRows] = await Promise.all([
+    getSlotTimings(),
+    getTimetableSettings(),
+    pool.query("SELECT id, room_name, room_type, capacity FROM classrooms ORDER BY room_type, room_name"),
+    pool.query(
+      "SELECT teacher_id, day_of_week, slot_number, is_available FROM teacher_availability WHERE teacher_id = ?",
+      [teacherId]
+    ),
+    getRegularTimetableForDay(pool, requestedDay),
+    getActiveExtraRequests(pool, requestedDate)
+  ]);
+
+  return {
+    requestedDay,
+    slots,
+    settings,
+    classrooms: classrooms[0],
+    teacherAvailability: buildAvailabilityContext(teacherAvailabilityRows[0]),
+    regularRows,
+    extraRows
+  };
+}
+
+function getFreeTeacherSlotsForDate(slotRows, requestedDay, teacherId, teacherAvailability, occupancyRows) {
+  const busyRows = occupancyRows.filter((row) => row.teacher_id === teacherId);
+  return slotRows.filter((slot) => {
+    const available = isTeacherAvailable(teacherAvailability, teacherId, requestedDay, slot.slot_number);
+    const occupied = busyRows.some((row) => rowOverlapsRequest(row, slot.slot_number, slot.slot_number));
+    return available && !occupied;
+  });
+}
+
+function getFreeRoomsForSlotRange(classrooms, occupancyRows, slotStart, slotEnd, roomTypeNeeded, search = "") {
+  return classrooms.filter((room) => {
+    const matchesType = roomTypeNeeded === "All" ? true : room.room_type === roomTypeNeeded;
+    const matchesSearch = !search || `${room.room_name} ${room.room_type}`.toLowerCase().includes(search.toLowerCase());
+    const occupied = occupancyRows.some((row) => row.room_id === room.id && rowOverlapsRequest(row, slotStart, slotEnd));
+    return matchesType && matchesSearch && !occupied;
+  });
+}
+
+async function getRoomFreeSlotView({ requestedDate, roomType = "All", search = "" }) {
+  await cleanupExpiredExtraLectureRequests();
+  const selectedDate = requestedDate || new Date().toISOString().slice(0, 10);
+  const selectedDay = getDayFromDate(selectedDate);
+  const [slots, classrooms, regularRows, extraRows] = await Promise.all([
+    getSlotTimings(),
+    pool.query("SELECT id, room_name, room_type, capacity FROM classrooms ORDER BY room_type, room_name"),
+    getRegularTimetableForDay(pool, selectedDay),
+    getActiveExtraRequests(pool, selectedDate)
+  ]);
+  const occupancyRows = [...regularRows, ...extraRows];
+  const roomRows = classrooms[0];
+
+  const grid = slots.map((slot) => ({
+    slot_number: slot.slot_number,
+    start_time: slot.start_time,
+    end_time: slot.end_time,
+    free_rooms: getFreeRoomsForSlotRange(
+      roomRows,
+      occupancyRows,
+      slot.slot_number,
+      slot.slot_number,
+      roomType,
+      search
+    )
+  }));
+
+  return {
+    selectedDate,
+    selectedDay,
+    roomType,
+    grid
+  };
+}
+
+async function getExtraLectureDashboard(teacherId, requestedDate, roomType = "All", search = "") {
+  const context = await getAvailabilityAndOccupancyForDate(requestedDate, teacherId);
+  const allOccupancy = [...context.regularRows, ...context.extraRows];
+  const ownFreeSlots = getFreeTeacherSlotsForDate(
+    context.slots,
+    context.requestedDay,
+    teacherId,
+    context.teacherAvailability,
+    allOccupancy
+  );
+  const roomGrid = context.slots.map((slot) => ({
+    slot_number: slot.slot_number,
+    start_time: slot.start_time,
+    end_time: slot.end_time,
+    free_rooms: getFreeRoomsForSlotRange(
+      context.classrooms,
+      allOccupancy,
+      slot.slot_number,
+      slot.slot_number,
+      roomType,
+      search
+    )
+  }));
+  const subjects = await getTeacherRequestableSubjects(teacherId);
+
+  return {
+    selectedDate: requestedDate,
+    selectedDay: context.requestedDay,
+    ownFreeSlots,
+    roomGrid,
+    subjects
+  };
+}
+
+async function getExtraLectureRequests(filters = {}) {
+  await cleanupExpiredExtraLectureRequests();
+  const conditions = [];
+  const params = [];
+
+  if (filters.teacherId) {
+    conditions.push("er.teacher_id = ?");
+    params.push(filters.teacherId);
+  }
+
+  if (filters.status) {
+    conditions.push("er.status = ?");
+    params.push(filters.status);
+  }
+
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const [rows] = await pool.query(
+    `SELECT er.request_id, er.teacher_id, er.subject_id, er.class_id, er.section_id, er.request_type,
+            er.room_type_needed, er.room_id, er.requested_day, er.requested_date, er.slot_number,
+            er.end_slot_number, er.start_time, er.end_time, er.status, er.notes, er.admin_notes,
+            er.notification_message, er.notification_seen, er.created_at,
+            t.teacher_code, t.full_name AS teacher_name,
+            s.subject_name, s.subject_code,
+            c.class_name, sec.section_name,
+            cr.room_name
+     FROM extra_lecture_requests er
+     JOIN teachers t ON er.teacher_id = t.id
+     JOIN subjects s ON er.subject_id = s.id
+     JOIN classes c ON er.class_id = c.id
+     JOIN sections sec ON er.section_id = sec.id
+     LEFT JOIN classrooms cr ON er.room_id = cr.id
+     ${whereClause}
+     ORDER BY FIELD(er.status, 'Pending', 'Needs Reschedule', 'Approved', 'Rejected', 'Cancelled', 'Completed'),
+              er.requested_date DESC, er.start_time DESC, er.created_at DESC`,
+    params
+  );
+
+  return rows;
+}
+
+async function validateExtraLectureRequestPayload(teacherId, payload, existingRequestId = null) {
+  const slots = await getSlotTimings();
+  const settings = await getTimetableSettings();
+  const requestedDate = payload.requested_date;
+  const requestedDay = getDayFromDate(requestedDate);
+  const slotNumber = Number(payload.slot_number);
+  const endSlotNumber = Number(payload.end_slot_number);
+  const slotRows = buildSlotRange(slots, slotNumber, endSlotNumber);
+  const durationMeta = validateTemporaryRequestSlots(slotRows, payload.request_type, settings);
+  const roomTypeNeeded = payload.room_type_needed || (payload.request_type === "Lab" ? "Lab" : "Classroom");
+
+  if (requestedDay === "Sunday") {
+    throw createGenerationError(
+      "Extra lecture requests cannot be created for Sunday.",
+      [
+        "Choose a working academic day from Monday to Saturday."
+      ]
+    );
+  }
+
+  const [subjectRows, roomRows, teacherAvailabilityRows, regularRows, extraRows] = await Promise.all([
+    pool.query(
+      `SELECT ts.teacher_id, ts.subject_id, ts.class_id, ts.section_id,
+              s.subject_name, s.subject_code, s.subject_type
+       FROM teacher_subjects ts
+       JOIN subjects s ON ts.subject_id = s.id
+       WHERE ts.teacher_id = ? AND ts.subject_id = ? AND ts.class_id = ? AND ts.section_id = ?`,
+      [teacherId, payload.subject_id, payload.class_id, payload.section_id]
+    ),
+    payload.room_id ? pool.query("SELECT id, room_name, room_type FROM classrooms WHERE id = ?", [payload.room_id]) : Promise.resolve([[]]),
+    pool.query(
+      "SELECT teacher_id, day_of_week, slot_number, is_available FROM teacher_availability WHERE teacher_id = ?",
+      [teacherId]
+    ),
+    getRegularTimetableForDay(pool, requestedDay),
+    getActiveExtraRequests(pool, requestedDate)
+  ]);
+
+  if (!subjectRows[0].length) {
+    throw createGenerationError(
+      "Selected subject is not assigned to this teacher for the chosen class and section.",
+      [
+        "Select one of your assigned subjects from the teacher request list."
+      ]
+    );
+  }
+
+  const assignedSubject = subjectRows[0][0];
+  if (assignedSubject.subject_type === "Theory Only" && payload.request_type === "Lab") {
+    throw createGenerationError(
+      "This subject is assigned as theory only and cannot be requested as a lab.",
+      ["Choose Lecture for this subject or select a lab-enabled subject."]
+    );
+  }
+
+  if (assignedSubject.subject_type === "Lab Only" && payload.request_type === "Lecture") {
+    throw createGenerationError(
+      "This subject is assigned as lab only and cannot be requested as a lecture.",
+      ["Choose Lab for this subject or select a theory-enabled subject."]
+    );
+  }
+
+  const occupancyRows = [
+    ...regularRows,
+    ...extraRows.filter((row) => !existingRequestId || Number(row.request_id) !== Number(existingRequestId))
+  ];
+  const teacherAvailability = buildAvailabilityContext(teacherAvailabilityRows[0]);
+
+  const unavailable = slotRows.some((slot) => !isTeacherAvailable(teacherAvailability, teacherId, requestedDay, slot.slot_number));
+  if (unavailable) {
+    throw createGenerationError(
+      `Teacher ${subjectRows[0][0].teacher_id} is unavailable for the requested extra ${payload.request_type.toLowerCase()}.`,
+      [
+        "Choose one of your currently free slots.",
+        "Check the updated free-slot view before submitting again."
+      ]
+    );
+  }
+
+  const teacherConflict = occupancyRows.some((row) => row.teacher_id === Number(teacherId) && rowOverlapsRequest(row, slotNumber, endSlotNumber));
+  if (teacherConflict) {
+    throw createGenerationError(
+      "Teacher already has a lecture or approved temporary request in the selected slot.",
+      [
+        "Choose another free slot from your teacher free-slot view."
+      ]
+    );
+  }
+
+  const sectionConflict = occupancyRows.some((row) => row.section_id === Number(payload.section_id) && rowOverlapsRequest(row, slotNumber, endSlotNumber));
+  if (sectionConflict) {
+    throw createGenerationError(
+      "Selected class or section already has another lecture in the requested slot.",
+      [
+        "Choose another free slot for this class or section.",
+        "Review the section timetable before submitting again."
+      ]
+    );
+  }
+
+  if (payload.room_id) {
+    const room = roomRows[0][0];
+    if (!room) {
+      throw createGenerationError("Requested room was not found.", ["Select a valid classroom or lab room."]);
+    }
+
+    if (room.room_type !== roomTypeNeeded) {
+      throw createGenerationError(
+        "Requested room type does not match the selected extra lecture type.",
+        [
+          `Choose a ${roomTypeNeeded.toLowerCase()} for this request.`
+        ]
+      );
+    }
+
+    const roomConflict = occupancyRows.some((row) => row.room_id === Number(payload.room_id) && rowOverlapsRequest(row, slotNumber, endSlotNumber));
+    if (roomConflict) {
+      throw createGenerationError(
+        `Requested room ${room.room_name} is already occupied in the selected slot.`,
+        [
+          "Choose another room from the free-room view.",
+          "Select another free slot if this room is required."
+        ]
+      );
+    }
+  }
+
+  const [duplicateRows] = await pool.query(
+    `SELECT request_id
+     FROM extra_lecture_requests
+     WHERE teacher_id = ? AND subject_id = ? AND class_id = ? AND section_id = ?
+       AND requested_date = ? AND slot_number = ? AND end_slot_number = ?
+       AND status IN ('Pending', 'Approved', 'Needs Reschedule')
+       ${existingRequestId ? "AND request_id <> ?" : ""}`,
+    existingRequestId
+      ? [teacherId, payload.subject_id, payload.class_id, payload.section_id, requestedDate, slotNumber, endSlotNumber, existingRequestId]
+      : [teacherId, payload.subject_id, payload.class_id, payload.section_id, requestedDate, slotNumber, endSlotNumber]
+  );
+
+  if (duplicateRows.length) {
+    throw createGenerationError(
+      "A similar extra lecture request already exists for this teacher and slot.",
+      [
+        "Check your request list before submitting a duplicate request."
+      ]
+    );
+  }
+
+  return {
+    requested_day: requestedDay,
+    requested_date: requestedDate,
+    slot_number: slotNumber,
+    end_slot_number: endSlotNumber,
+    start_time: durationMeta.start_time,
+    end_time: durationMeta.end_time,
+    room_type_needed: roomTypeNeeded
+  };
+}
+
+async function createExtraLectureRequest(teacherId, payload) {
+  await cleanupExpiredExtraLectureRequests();
+  const normalized = await validateExtraLectureRequestPayload(teacherId, payload);
+  const [result] = await pool.query(
+    `INSERT INTO extra_lecture_requests
+      (teacher_id, subject_id, class_id, section_id, request_type, room_type_needed, room_id, requested_day, requested_date,
+       slot_number, end_slot_number, start_time, end_time, notes, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+    [
+      teacherId,
+      Number(payload.subject_id),
+      Number(payload.class_id),
+      Number(payload.section_id),
+      payload.request_type,
+      normalized.room_type_needed,
+      payload.room_id ? Number(payload.room_id) : null,
+      normalized.requested_day,
+      normalized.requested_date,
+      normalized.slot_number,
+      normalized.end_slot_number,
+      normalized.start_time,
+      normalized.end_time,
+      payload.notes || null
+    ]
+  );
+
+  return result.insertId;
+}
+
+async function approveExtraLectureRequest(requestId, adminId, payload = {}) {
+  await cleanupExpiredExtraLectureRequests();
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const [[request]] = await connection.query(
+      `SELECT * FROM extra_lecture_requests WHERE request_id = ? FOR UPDATE`,
+      [requestId]
+    );
+
+    if (!request) {
+      throw createGenerationError("Extra lecture request not found.", ["Refresh the request list and try again."]);
+    }
+
+    if (!["Pending", "Needs Reschedule"].includes(request.status)) {
+      throw createGenerationError(
+        `Only pending requests can be approved. Current status: ${request.status}.`,
+        ["Refresh the request list before approving again."]
+      );
+    }
+
+    const requestedDay = request.requested_day;
+    const [slots, teacherAvailabilityRows, regularRows, approvedExtras, roomRows] = await Promise.all([
+      getSlotTimings(),
+      connection.query(
+        "SELECT teacher_id, day_of_week, slot_number, is_available FROM teacher_availability WHERE teacher_id = ?",
+        [request.teacher_id]
+      ),
+      getRegularTimetableForDay(connection, requestedDay),
+      getActiveExtraRequests(connection, request.requested_date),
+      connection.query("SELECT id, room_name, room_type FROM classrooms ORDER BY room_type, room_name")
+    ]);
+
+    const slotRows = buildSlotRange(slots, request.slot_number, request.end_slot_number);
+    const teacherAvailability = buildAvailabilityContext(teacherAvailabilityRows[0]);
+    if (slotRows.some((slot) => !isTeacherAvailable(teacherAvailability, request.teacher_id, requestedDay, slot.slot_number))) {
+      throw createGenerationError(
+        "Teacher is not available in the requested slot anymore.",
+        [
+          "Ask the teacher to choose another free slot.",
+          "Check the updated free-slot view before approval."
+        ]
+      );
+    }
+
+    const occupancyRows = [
+      ...regularRows,
+      ...approvedExtras.filter((row) => Number(row.request_id) !== Number(requestId))
+    ];
+
+    const teacherConflict = occupancyRows.some((row) => row.teacher_id === request.teacher_id && rowOverlapsRequest(row, request.slot_number, request.end_slot_number));
+    if (teacherConflict) {
+      throw createGenerationError(
+        "Teacher now has another approved lecture in the requested slot.",
+        [
+          "Reject or reschedule this extra lecture request.",
+          "Check the teacher free-slot view before approving again."
+        ]
+      );
+    }
+
+    const sectionConflict = occupancyRows.some((row) => row.section_id === request.section_id && rowOverlapsRequest(row, request.slot_number, request.end_slot_number));
+    if (sectionConflict) {
+      throw createGenerationError(
+        "The selected class or section already has another approved lecture in this slot.",
+        [
+          "Choose another free slot for the class or section."
+        ]
+      );
+    }
+
+    const roomCatalog = roomRows[0].filter((room) => room.room_type === request.room_type_needed);
+    const assignedRoomId = payload.room_id ? Number(payload.room_id) : (request.room_id ? Number(request.room_id) : null);
+    let selectedRoom = assignedRoomId
+      ? roomCatalog.find((room) => Number(room.id) === assignedRoomId)
+      : roomCatalog.find((room) => !occupancyRows.some((row) => row.room_id === room.id && rowOverlapsRequest(row, request.slot_number, request.end_slot_number)));
+
+    if (!selectedRoom) {
+      throw createGenerationError(
+        `No free ${request.room_type_needed.toLowerCase()} is available for approval in the requested slot.`,
+        [
+          "Choose another room from the room free-slot view.",
+          "Ask the teacher to choose another date or slot."
+        ]
+      );
+    }
+
+    const roomConflict = occupancyRows.some((row) => row.room_id === selectedRoom.id && rowOverlapsRequest(row, request.slot_number, request.end_slot_number));
+    if (roomConflict) {
+      throw createGenerationError(
+        `Selected room ${selectedRoom.room_name} is already assigned in that slot.`,
+        [
+          "Choose another free room before approving."
+        ]
+      );
+    }
+
+    await connection.query(
+      `UPDATE extra_lecture_requests
+       SET status = 'Approved', room_id = ?, approved_by = ?, admin_notes = ?, notification_message = ?, notification_seen = 0
+       WHERE request_id = ?`,
+      [
+        selectedRoom.id,
+        adminId,
+        payload.admin_notes || null,
+        `Your extra ${request.request_type.toLowerCase()} request has been approved for ${request.requested_day} ${String(request.start_time).slice(0, 5)}-${String(request.end_time).slice(0, 5)} in ${selectedRoom.room_name}.`,
+        requestId
+      ]
+    );
+
+    const [conflictingPending] = await connection.query(
+      `SELECT request_id, teacher_id, room_id, request_type
+       FROM extra_lecture_requests
+       WHERE request_id <> ?
+         AND status = 'Pending'
+         AND requested_date = ?
+         AND (
+           teacher_id = ?
+           OR (room_id IS NOT NULL AND room_id = ?)
+         )
+         AND NOT (end_slot_number < ? OR slot_number > ?)`,
+      [requestId, request.requested_date, request.teacher_id, selectedRoom.id, request.slot_number, request.end_slot_number]
+    );
+
+    for (const conflicting of conflictingPending) {
+      const isTeacherConflict = Number(conflicting.teacher_id) === Number(request.teacher_id);
+      const conflictMessage = isTeacherConflict
+        ? `Your requested extra lecture slot on ${request.requested_day} ${String(request.start_time).slice(0, 5)}-${String(request.end_time).slice(0, 5)} is no longer available because you already have another approved lecture in that time. Please choose another free slot.`
+        : `Your requested extra lecture slot on ${request.requested_day} ${String(request.start_time).slice(0, 5)}-${String(request.end_time).slice(0, 5)} for ${selectedRoom.room_name} is no longer available because it has been assigned to another teacher. Please select another free slot.`;
+
+      await connection.query(
+        `UPDATE extra_lecture_requests
+         SET status = 'Needs Reschedule', notification_message = ?, notification_seen = 0, admin_notes = COALESCE(admin_notes, 'Conflicting request needs reschedule.')
+         WHERE request_id = ?`,
+        [conflictMessage, conflicting.request_id]
+      );
+    }
+
+    await connection.commit();
+    return {
+      room_name: selectedRoom.room_name,
+      conflictedRequests: conflictingPending.length
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function rejectExtraLectureRequest(requestId, adminNotes) {
+  await cleanupExpiredExtraLectureRequests();
+  const [result] = await pool.query(
+    `UPDATE extra_lecture_requests
+     SET status = 'Rejected', admin_notes = ?, notification_message = ?, notification_seen = 0
+     WHERE request_id = ? AND status IN ('Pending', 'Needs Reschedule')`,
+    [
+      adminNotes || null,
+      adminNotes
+        ? `Your extra lecture request was rejected. Admin note: ${adminNotes}`
+        : "Your extra lecture request was rejected by admin.",
+      requestId
+    ]
+  );
+
+  if (!result.affectedRows) {
+    throw createGenerationError("Request cannot be rejected in its current state.", ["Refresh the request list and try again."]);
+  }
+}
+
+async function cancelExtraLectureRequest(requestId, actor) {
+  await cleanupExpiredExtraLectureRequests();
+  const [rows] = await pool.query(
+    `SELECT request_id, teacher_id, requested_date, end_time, status
+     FROM extra_lecture_requests
+     WHERE request_id = ?`,
+    [requestId]
+  );
+  const request = rows[0];
+
+  if (!request) {
+    throw createGenerationError("Extra lecture request not found.", ["Refresh the request list and try again."]);
+  }
+
+  if (actor.role === "teacher" && Number(request.teacher_id) !== Number(actor.teacher_id)) {
+    throw createGenerationError("You can only cancel your own extra lecture requests.", []);
+  }
+
+  if (!["Pending", "Approved", "Needs Reschedule"].includes(request.status)) {
+    throw createGenerationError("Only pending or approved requests can be cancelled.", []);
+  }
+
+  const [timeRows] = await pool.query("SELECT CURDATE() AS today_date, CURTIME() AS now_time");
+  const currentDate = String(timeRows[0].today_date).slice(0, 10);
+  const currentTime = String(timeRows[0].now_time).slice(0, 8);
+  if (
+    request.status === "Approved"
+    && (
+      String(request.requested_date).slice(0, 10) < currentDate
+      || (String(request.requested_date).slice(0, 10) === currentDate && String(request.end_time).slice(0, 8) <= currentTime)
+    )
+  ) {
+    throw createGenerationError(
+      "Approved extra lectures cannot be cancelled after the scheduled time has passed.",
+      [
+        "Cancel approved requests before the lecture or lab is completed."
+      ]
+    );
+  }
+
+  const [result] = await pool.query(
+    `UPDATE extra_lecture_requests
+     SET status = 'Cancelled', notification_message = 'This extra lecture request has been cancelled.', notification_seen = 0
+     WHERE request_id = ?`,
+    [requestId]
+  );
+
+  return result.affectedRows;
+}
+
+async function markExtraLectureNotificationSeen(requestId, teacherId) {
+  await pool.query(
+    `UPDATE extra_lecture_requests
+     SET notification_seen = 1
+     WHERE request_id = ? AND teacher_id = ?`,
+    [requestId, teacherId]
+  );
+}
+
 module.exports = {
   DAYS,
   getAllTimetableEntries,
@@ -1118,6 +1879,14 @@ module.exports = {
   getTeacherTimetableGrid,
   getTeacherFreeSlotGrid,
   getSchedulingSupportView,
+  getRoomFreeSlotView,
+  getExtraLectureDashboard,
+  getExtraLectureRequests,
+  createExtraLectureRequest,
+  approveExtraLectureRequest,
+  rejectExtraLectureRequest,
+  cancelExtraLectureRequest,
+  markExtraLectureNotificationSeen,
   getSlotTimings,
   createSlotTiming,
   updateSlotTiming,

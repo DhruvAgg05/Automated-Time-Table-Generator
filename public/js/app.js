@@ -91,6 +91,13 @@ function syncSlotLabels(slots) {
   });
 }
 
+function getTodayLocal() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  const localDate = new Date(now.getTime() - (offset * 60 * 1000));
+  return localDate.toISOString().slice(0, 10);
+}
+
 function fillSelect(elementId, items, valueKey, labelBuilder, placeholder = "Select") {
   const select = document.getElementById(elementId);
   if (!select) {
@@ -183,6 +190,8 @@ async function initDashboard() {
   const user = userResult.user;
 
   if (user.role === "admin") {
+    const timetableMeta = await apiFetch(API.timetable);
+    syncSlotLabels(timetableMeta.slots);
     const result = await apiFetch(`${API.admin}/dashboard`);
     document.getElementById("adminDashboard").classList.remove("hidden");
     renderMetricCards(result.stats);
@@ -776,14 +785,25 @@ window.deleteClassroom = async function deleteClassroom(id) {
 async function initTimetablePage() {
   bindSearch("timetableSearch", "timetableTable");
   document.getElementById("printTimetableBtn").addEventListener("click", () => window.print());
+  const today = getTodayLocal();
+  if (document.getElementById("roomFreeDate")) document.getElementById("roomFreeDate").value = today;
+  if (document.getElementById("extraLectureDate")) document.getElementById("extraLectureDate").value = today;
 
   if (CURRENT_USER.role === "admin") {
+    document.getElementById("teacherGridPanel").classList.remove("hidden");
+    document.getElementById("supportPanel").classList.remove("hidden");
+    document.getElementById("roomFreePanel").classList.remove("hidden");
+    document.getElementById("adminExtraLecturePanel").classList.remove("hidden");
+    document.getElementById("teacherFreePanel").classList.remove("hidden");
+    document.getElementById("roomFreeGridPanel").classList.remove("hidden");
     await populateCommonReferenceSelects();
     await loadTimetablePage();
     await loadSlotTimingSettings();
     await loadDurationSettings();
     await loadTeacherFreeGrid();
     await loadSchedulingSupport();
+    await loadRoomFreeGrid();
+    await loadAdminExtraLectureRequests();
 
     document.getElementById("generateTimetableBtn").addEventListener("click", async () => {
       try {
@@ -792,6 +812,7 @@ async function initTimetablePage() {
         await loadTimetablePage();
         await loadTeacherFreeGrid();
         await loadSchedulingSupport();
+        await loadRoomFreeGrid();
       } catch (error) {
         showMessage("timetableMessage", error.message, "danger");
       }
@@ -839,6 +860,14 @@ async function initTimetablePage() {
       await loadSchedulingSupport();
     });
 
+    document.getElementById("roomFreeRefreshBtn").addEventListener("click", async () => {
+      await loadRoomFreeGrid();
+    });
+
+    document.getElementById("adminRequestStatusFilter").addEventListener("change", async () => {
+      await loadAdminExtraLectureRequests();
+    });
+
     document.getElementById("slotTimingForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       const payload = Object.fromEntries(new FormData(event.target).entries());
@@ -856,6 +885,7 @@ async function initTimetablePage() {
       await loadSlotTimingSettings();
       await loadTimetablePage();
       await loadSchedulingSupport();
+      await loadRoomFreeGrid();
     });
 
     document.getElementById("durationSettingsForm").addEventListener("submit", async (event) => {
@@ -877,6 +907,12 @@ async function initTimetablePage() {
   document.getElementById("generateTimetableBtn").classList.add("hidden");
   document.getElementById("clearTimetableBtn").classList.add("hidden");
   document.getElementById("manualOverridePanel").classList.add("hidden");
+  document.getElementById("roomFreePanel").classList.add("hidden");
+  document.getElementById("adminExtraLecturePanel").classList.add("hidden");
+  document.getElementById("teacherGridPanel").classList.add("hidden");
+  document.getElementById("supportPanel").classList.add("hidden");
+  document.getElementById("teacherFreePanel").classList.add("hidden");
+  document.getElementById("supportSummary").innerHTML = "";
 
   if (CURRENT_USER.role === "teacher") {
     const timetableMeta = await apiFetch(API.timetable);
@@ -885,6 +921,45 @@ async function initTimetablePage() {
     renderPortalTimetableRows(result.data.schedule, "teacher");
     renderTimetableGrid(result.data.schedule);
     document.getElementById("sectionGridPanel").classList.add("hidden");
+    document.getElementById("teacherExtraLecturePanel").classList.remove("hidden");
+    document.getElementById("teacherExtraLectureRequestsPanel").classList.remove("hidden");
+    document.getElementById("roomFreeGridPanel").classList.remove("hidden");
+    document.getElementById("freeTeacherGridContainer").innerHTML = '<p class="text-muted mb-0">Teacher free-slot grid is available in the teacher request panel for the selected date.</p>';
+    document.getElementById("teacherGridContainer").innerHTML = '<p class="text-muted mb-0">Teacher-wise printable grid is available for admin only.</p>';
+    await loadTeacherExtraLectureDashboard();
+    await loadTeacherExtraLectureRequests();
+
+    document.getElementById("extraLectureDate").addEventListener("change", async () => {
+      await loadTeacherExtraLectureDashboard();
+      await loadRoomFreeGrid();
+    });
+    document.getElementById("extraLectureType").addEventListener("change", async (event) => {
+      document.getElementById("extraLectureRoomType").value = event.target.value === "Lab" ? "Lab" : "Classroom";
+      await loadTeacherExtraLectureDashboard();
+      await loadRoomFreeGrid();
+    });
+    document.getElementById("extraLectureRoomType").addEventListener("change", async () => {
+      await loadTeacherExtraLectureDashboard();
+      await loadRoomFreeGrid();
+    });
+    document.getElementById("extraLectureRequestForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const payload = buildTeacherExtraLecturePayload();
+        const resultRequest = await apiFetch(`${API.timetable}/extra-lecture/requests`, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        showMessage("teacherExtraLectureMessage", resultRequest.message);
+        event.target.reset();
+        document.getElementById("extraLectureDate").value = today;
+        await loadTeacherExtraLectureDashboard();
+        await loadTeacherExtraLectureRequests();
+        await loadRoomFreeGrid();
+      } catch (error) {
+        showMessage("teacherExtraLectureMessage", error.message, "danger");
+      }
+    });
     return;
   }
 
@@ -894,6 +969,12 @@ async function initTimetablePage() {
   renderPortalTimetableRows(result.data, "student");
   renderTimetableGrid(result.data);
   document.getElementById("sectionGridPanel").classList.add("hidden");
+  document.getElementById("roomFreeGridPanel").classList.add("hidden");
+  document.getElementById("teacherExtraLecturePanel").classList.add("hidden");
+  document.getElementById("teacherExtraLectureRequestsPanel").classList.add("hidden");
+  document.getElementById("teacherFreePanel").classList.add("hidden");
+  document.getElementById("teacherGridContainer").innerHTML = '<p class="text-muted mb-0">Teacher-wise printable grid is available for admin only.</p>';
+  document.getElementById("freeTeacherGridContainer").innerHTML = '<p class="text-muted mb-0">Teacher free-slot visibility is available for admin only.</p>';
 }
 
 async function loadTimetablePage() {
@@ -913,6 +994,7 @@ async function loadTimetablePage() {
   fillSelect("editSubjectId", subjects, "id", (item) => `${item.subject_code} - ${item.subject_name}`, "Select Subject");
   fillSelect("editTeacherId", teacherData.data, "id", (item) => item.full_name, "Select Teacher");
   fillSelect("editClassroomId", roomData.data, "id", (item) => item.room_name, "Select Room");
+  fillSelect("adminApprovalRoomSelect", roomData.data, "id", (item) => `${item.room_name} (${item.room_type})`, "Auto Assign Room");
   fillSelect("sectionGridSelect", sections, "id", (item) => `${item.class_name} ${item.section_name}`, "Select Section");
   fillSelect("editSlot", timetableResult.slots, "slot_number", (item) => `Slot ${item.slot_number} (${String(item.start_time).slice(0, 5)} - ${String(item.end_time).slice(0, 5)})`, "Select Slot");
   fillSelect("supportSlotSelect", timetableResult.slots, "slot_number", (item) => `Slot ${item.slot_number} (${String(item.start_time).slice(0, 5)} - ${String(item.end_time).slice(0, 5)})`, "Select Slot");
@@ -933,6 +1015,140 @@ async function loadTimetablePage() {
         </td>
       </tr>`
     )
+    .join("");
+}
+
+function buildTeacherExtraLecturePayload() {
+  const assignmentValue = document.getElementById("extraLectureSubject").value;
+  const assignment = JSON.parse(assignmentValue);
+  return {
+    subject_id: assignment.subject_id,
+    class_id: assignment.class_id,
+    section_id: assignment.section_id,
+    requested_date: document.getElementById("extraLectureDate").value,
+    request_type: document.getElementById("extraLectureType").value,
+    room_type_needed: document.getElementById("extraLectureRoomType").value,
+    room_id: document.getElementById("extraLectureRoomId").value || null,
+    slot_number: Number(document.getElementById("extraLectureStartSlot").value),
+    end_slot_number: Number(document.getElementById("extraLectureEndSlot").value),
+    notes: document.getElementById("extraLectureNotes").value.trim()
+  };
+}
+
+async function loadRoomFreeGrid() {
+  const requestedDate = (CURRENT_USER.role === "teacher"
+    ? document.getElementById("extraLectureDate")?.value
+    : document.getElementById("roomFreeDate")?.value) || getTodayLocal();
+  const roomType = CURRENT_USER.role === "teacher"
+    ? (document.getElementById("extraLectureRoomType")?.value || "All")
+    : (document.getElementById("roomFreeType")?.value || "All");
+  const search = CURRENT_USER.role === "teacher"
+    ? ""
+    : (document.getElementById("roomFreeSearch")?.value.trim() || "");
+
+  try {
+    const result = await apiFetch(
+      `${API.timetable}/room-free-grid?requested_date=${encodeURIComponent(requestedDate)}&room_type=${encodeURIComponent(roomType)}&search=${encodeURIComponent(search)}`
+    );
+    renderRoomFreeGrid(result.data.grid, result.data.selectedDate, result.data.selectedDay, roomType);
+    if (document.getElementById("roomFreeSummary")) {
+      document.getElementById("roomFreeSummary").innerHTML = `Showing free ${roomType === "All" ? "rooms" : roomType.toLowerCase()} for <strong>${result.data.selectedDay}</strong> (${result.data.selectedDate}).`;
+    }
+  } catch (error) {
+    document.getElementById("roomFreeGridContainer").innerHTML = `<div class="alert alert-danger mb-0">${error.message}</div>`;
+  }
+}
+
+async function loadTeacherExtraLectureDashboard() {
+  const requestedDate = document.getElementById("extraLectureDate").value || getTodayLocal();
+  const roomType = document.getElementById("extraLectureRoomType").value || "Classroom";
+  const result = await apiFetch(
+    `${API.timetable}/extra-lecture/dashboard?requested_date=${encodeURIComponent(requestedDate)}&room_type=${encodeURIComponent(roomType)}`
+  );
+
+  const subjectSelect = document.getElementById("extraLectureSubject");
+  subjectSelect.innerHTML = '<option value="">Select Assigned Subject</option>';
+  result.data.subjects.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = JSON.stringify({
+      subject_id: item.subject_id,
+      class_id: item.class_id,
+      section_id: item.section_id
+    });
+    option.textContent = `${item.subject_code} - ${item.subject_name} (${item.class_name} ${item.section_name})`;
+    subjectSelect.appendChild(option);
+  });
+
+  fillSelect(
+    "extraLectureStartSlot",
+    Object.keys(SLOT_LABELS).map((slotNumber) => ({ slot_number: Number(slotNumber) })),
+    "slot_number",
+    (item) => `Slot ${item.slot_number} (${SLOT_LABELS[item.slot_number]})`,
+    "Start Slot"
+  );
+  fillSelect(
+    "extraLectureEndSlot",
+    Object.keys(SLOT_LABELS).map((slotNumber) => ({ slot_number: Number(slotNumber) })),
+    "slot_number",
+    (item) => `Slot ${item.slot_number} (${SLOT_LABELS[item.slot_number]})`,
+    "End Slot"
+  );
+
+  const rooms = result.data.roomGrid.flatMap((slot) => slot.free_rooms);
+  const uniqueRooms = Array.from(new Map(rooms.map((room) => [room.id, room])).values());
+  fillSelect("extraLectureRoomId", uniqueRooms, "id", (item) => `${item.room_name} (${item.room_type})`, "Auto Assign or Select Room");
+
+  document.getElementById("teacherOwnFreeSlots").innerHTML = renderListItems(
+    result.data.ownFreeSlots.map((slot) => `${SLOT_LABELS[slot.slot_number]}`),
+    "No free teacher slots on the selected date."
+  );
+
+  document.getElementById("teacherFreeRoomsList").innerHTML = renderListItems(
+    result.data.roomGrid.map((slot) => {
+      const roomNames = slot.free_rooms.map((room) => room.room_name).join(", ");
+      return roomNames ? `${String(slot.start_time).slice(0, 5)} - ${String(slot.end_time).slice(0, 5)}: ${roomNames}` : null;
+    }).filter(Boolean),
+    "No free rooms found for the selected date."
+  );
+}
+
+async function loadTeacherExtraLectureRequests() {
+  const result = await apiFetch(`${API.timetable}/extra-lecture/requests`);
+  document.getElementById("teacherExtraLectureRows").innerHTML = result.data
+    .map((item) => `<tr>
+      <td>${item.subject_code} - ${item.subject_name}<br><small>${item.class_name} ${item.section_name}</small></td>
+      <td>${item.requested_date}<br><small>${item.requested_day}</small></td>
+      <td>${String(item.start_time).slice(0, 5)} - ${String(item.end_time).slice(0, 5)}</td>
+      <td>${item.room_name || item.room_type_needed}</td>
+      <td>${item.status}</td>
+      <td>${item.notification_message || "-"}</td>
+      <td>
+        ${["Pending", "Approved", "Needs Reschedule"].includes(item.status) ? `<button class="btn btn-sm btn-outline-danger" onclick="cancelExtraLectureRequest(${item.request_id})">Cancel</button>` : ""}
+        ${item.notification_message && !item.notification_seen ? `<button class="btn btn-sm btn-outline-secondary mt-1" onclick="markExtraLectureSeen(${item.request_id})">Acknowledge</button>` : ""}
+      </td>
+    </tr>`)
+    .join("");
+}
+
+async function loadAdminExtraLectureRequests() {
+  const status = document.getElementById("adminRequestStatusFilter").value;
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  const result = await apiFetch(`${API.timetable}/extra-lecture/requests${query}`);
+  document.getElementById("adminExtraLectureRows").innerHTML = result.data
+    .map((item) => `<tr>
+      <td>${item.teacher_code} - ${item.teacher_name}</td>
+      <td>${item.subject_code} - ${item.subject_name}<br><small>${item.class_name} ${item.section_name}</small></td>
+      <td>${item.requested_date}<br><small>${item.requested_day}</small></td>
+      <td>${String(item.start_time).slice(0, 5)} - ${String(item.end_time).slice(0, 5)}</td>
+      <td>${item.room_type_needed}</td>
+      <td>${item.room_name || "-"}</td>
+      <td>${item.status}${item.notification_message ? `<br><small>${item.notification_message}</small>` : ""}</td>
+      <td>
+        ${["Pending", "Needs Reschedule"].includes(item.status) ? `<button class="btn btn-sm btn-outline-success" onclick="approveExtraLectureRequest(${item.request_id})">Approve</button>
+        <button class="btn btn-sm btn-outline-danger mt-1" onclick="rejectExtraLectureRequest(${item.request_id})">Reject</button>` : ""}
+        ${["Pending", "Approved", "Needs Reschedule"].includes(item.status) ? `<button class="btn btn-sm btn-outline-secondary mt-1" onclick="cancelExtraLectureRequest(${item.request_id})">Cancel</button>` : ""}
+      </td>
+    </tr>`)
     .join("");
 }
 
@@ -1089,6 +1305,61 @@ window.deleteTimetableEntry = async function deleteTimetableEntry(id) {
   await loadTimetablePage();
 };
 
+window.approveExtraLectureRequest = async function approveExtraLectureRequest(id) {
+  try {
+    const result = await apiFetch(`${API.timetable}/extra-lecture/requests/${id}/approve`, {
+      method: "PUT",
+      body: JSON.stringify({
+        room_id: document.getElementById("adminApprovalRoomSelect").value || null,
+        admin_notes: document.getElementById("adminApprovalNotes").value.trim()
+      })
+    });
+    showMessage("timetableMessage", result.message);
+    await loadAdminExtraLectureRequests();
+    await loadRoomFreeGrid();
+  } catch (error) {
+    showMessage("timetableMessage", error.message, "danger");
+  }
+};
+
+window.rejectExtraLectureRequest = async function rejectExtraLectureRequest(id) {
+  try {
+    const result = await apiFetch(`${API.timetable}/extra-lecture/requests/${id}/reject`, {
+      method: "PUT",
+      body: JSON.stringify({
+        admin_notes: document.getElementById("adminApprovalNotes").value.trim()
+      })
+    });
+    showMessage("timetableMessage", result.message);
+    await loadAdminExtraLectureRequests();
+  } catch (error) {
+    showMessage("timetableMessage", error.message, "danger");
+  }
+};
+
+window.cancelExtraLectureRequest = async function cancelExtraLectureRequest(id) {
+  try {
+    const result = await apiFetch(`${API.timetable}/extra-lecture/requests/${id}/cancel`, {
+      method: "PUT"
+    });
+    showMessage(CURRENT_USER.role === "teacher" ? "teacherExtraLectureMessage" : "timetableMessage", result.message);
+    if (CURRENT_USER.role === "teacher") {
+      await loadTeacherExtraLectureRequests();
+      await loadTeacherExtraLectureDashboard();
+    } else {
+      await loadAdminExtraLectureRequests();
+    }
+    await loadRoomFreeGrid();
+  } catch (error) {
+    showMessage(CURRENT_USER.role === "teacher" ? "teacherExtraLectureMessage" : "timetableMessage", error.message, "danger");
+  }
+};
+
+window.markExtraLectureSeen = async function markExtraLectureSeen(id) {
+  await apiFetch(`${API.timetable}/extra-lecture/requests/${id}/seen`, { method: "PUT" });
+  await loadTeacherExtraLectureRequests();
+};
+
 function renderTimetableGrid(entries) {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const slots = Object.keys(SLOT_LABELS)
@@ -1183,6 +1454,28 @@ function renderFreeTeacherGrid(grid, totalTeachers = 0) {
   </table>`;
 
   document.getElementById("freeTeacherGridContainer").innerHTML = html;
+}
+
+function renderRoomFreeGrid(grid, selectedDate, selectedDay, roomType) {
+  const html = `
+    <div class="mini-note mb-3">Free ${roomType === "All" ? "rooms" : roomType.toLowerCase()} for <strong>${selectedDay}</strong> (${selectedDate}).</div>
+    <table class="table table-bordered timetable-grid">
+      <thead>
+        <tr>
+          <th>Time Slot</th>
+          <th>Free Rooms</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${grid.map((slot) => `<tr>
+          <th>${String(slot.start_time).slice(0, 5)} - ${String(slot.end_time).slice(0, 5)}</th>
+          <td>${slot.free_rooms.length ? `<div class="grid-cell">${slot.free_rooms.map((room) => `<div>${room.room_name} (${room.room_type})</div>`).join("")}</div>` : "-"}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+  `;
+
+  document.getElementById("roomFreeGridContainer").innerHTML = html;
 }
 
 function renderPortalTimetableRows(entries, role) {

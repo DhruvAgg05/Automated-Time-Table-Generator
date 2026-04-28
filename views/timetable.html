@@ -118,7 +118,7 @@
                 <select class="form-select" id="sectionGridSelect"></select>
               </div>
             </div>
-            <div class="card panel-card mt-4" id="teacherGridPanel">
+            <div class="card panel-card mt-4 hidden" id="teacherGridPanel">
               <div class="card-body">
                 <h5 class="mb-3">Teacher-wise Printable Timetable</h5>
                 <div class="action-stack">
@@ -129,7 +129,7 @@
                 <div id="teacherGridSummary" class="mini-note mt-3"></div>
               </div>
             </div>
-            <div class="card panel-card mt-4">
+            <div class="card panel-card mt-4 hidden" id="supportPanel">
               <div class="card-body">
                 <h5 class="mb-3">Scheduling Support</h5>
                 <p class="mini-note">Use this view before manual adjustment to see free teachers, free rooms, free labs, and teachers nearing overload.</p>
@@ -142,10 +142,56 @@
                 <div id="supportSummary" class="mt-3"></div>
               </div>
             </div>
+            <div class="card panel-card mt-4 no-print hidden" id="roomFreePanel">
+              <div class="card-body">
+                <h5 class="mb-3">Room Free Slot View</h5>
+                <div class="row g-2">
+                  <div class="col-md-4"><input class="form-control" id="roomFreeDate" type="date"></div>
+                  <div class="col-md-4">
+                    <select class="form-select" id="roomFreeType">
+                      <option value="All">All Rooms</option>
+                      <option value="Classroom">Classrooms Only</option>
+                      <option value="Lab">Labs Only</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4"><input class="form-control" id="roomFreeSearch" placeholder="Search room name"></div>
+                </div>
+                <button class="btn btn-outline-primary mt-3" id="roomFreeRefreshBtn">Refresh Room Free View</button>
+                <div id="roomFreeSummary" class="mini-note mt-3"></div>
+              </div>
+            </div>
+            <div class="card panel-card mt-4 no-print hidden" id="adminExtraLecturePanel">
+              <div class="card-body">
+                <h5 class="mb-3">Extra Lecture Requests</h5>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <select class="form-select" id="adminRequestStatusFilter">
+                      <option value="">All Status</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Needs Reschedule">Needs Reschedule</option>
+                      <option value="Approved">Approved</option>
+                      <option value="Rejected">Rejected</option>
+                      <option value="Cancelled">Cancelled</option>
+                      <option value="Completed">Completed</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <select class="form-select" id="adminApprovalRoomSelect"></select>
+                  </div>
+                </div>
+                <textarea class="form-control mt-3" id="adminApprovalNotes" rows="2" placeholder="Admin notes for approval or rejection"></textarea>
+                <div class="table-responsive mt-3">
+                  <table class="table data-table">
+                    <thead><tr><th>Teacher</th><th>Subject</th><th>Date</th><th>Time</th><th>Room Type</th><th>Room</th><th>Status</th><th>Action</th></tr></thead>
+                    <tbody id="adminExtraLectureRows"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="card panel-card mt-4">
+        <div class="card panel-card mt-4 hidden" id="teacherFreePanel">
           <div class="card-body">
             <h5 class="mb-3">Printable Timetable Grid</h5>
             <div id="gridContainer"><p class="text-muted mb-0">Select a section to preview the weekly timetable grid.</p></div>
@@ -165,6 +211,68 @@
               <button class="btn btn-outline-primary" id="freeTeacherSearchBtn">Refresh Free Teacher Grid</button>
             </div>
             <div id="freeTeacherGridContainer"><p class="text-muted mb-0">Free teacher visibility grid will appear here.</p></div>
+          </div>
+        </div>
+        <div class="card panel-card mt-4 hidden" id="roomFreeGridPanel">
+          <div class="card-body">
+            <h5 class="mb-3">Room Free Slot Grid</h5>
+            <div id="roomFreeGridContainer"><p class="text-muted mb-0">Choose a date to preview free classrooms and labs.</p></div>
+          </div>
+        </div>
+        <div class="card panel-card mt-4 hidden" id="teacherExtraLecturePanel">
+          <div class="card-body">
+            <h5 class="mb-3">Temporary Extra Lecture Request</h5>
+            <div id="teacherExtraLectureMessage"></div>
+            <form id="extraLectureRequestForm" class="no-print">
+              <div class="row g-2">
+                <div class="col-md-6"><input class="form-control" id="extraLectureDate" name="requested_date" type="date" required></div>
+                <div class="col-md-6">
+                  <select class="form-select" id="extraLectureSubject" name="subject_assignment" required></select>
+                </div>
+                <div class="col-md-4">
+                  <select class="form-select" id="extraLectureType" name="request_type" required>
+                    <option value="Lecture">Lecture</option>
+                    <option value="Lab">Lab</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <select class="form-select" id="extraLectureRoomType" name="room_type_needed" required>
+                    <option value="Classroom">Classroom</option>
+                    <option value="Lab">Lab</option>
+                  </select>
+                </div>
+                <div class="col-md-4"><select class="form-select" id="extraLectureRoomId" name="room_id"></select></div>
+                <div class="col-md-6"><select class="form-select" id="extraLectureStartSlot" name="slot_number" required></select></div>
+                <div class="col-md-6"><select class="form-select" id="extraLectureEndSlot" name="end_slot_number" required></select></div>
+                <div class="col-12"><textarea class="form-control" id="extraLectureNotes" name="notes" rows="2" placeholder="Reason or notes (optional)"></textarea></div>
+              </div>
+              <button class="btn btn-primary mt-3">Submit Extra Lecture Request</button>
+            </form>
+            <div class="row g-3 mt-3">
+              <div class="col-lg-6">
+                <div class="border rounded-3 p-3 h-100">
+                  <h6>Your Free Slots On Selected Date</h6>
+                  <ul class="list-group list-group-flush" id="teacherOwnFreeSlots"></ul>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="border rounded-3 p-3 h-100">
+                  <h6>Free Rooms On Selected Date</h6>
+                  <ul class="list-group list-group-flush" id="teacherFreeRoomsList"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card panel-card mt-4 hidden" id="teacherExtraLectureRequestsPanel">
+          <div class="card-body">
+            <h5 class="mb-3">My Extra Lecture Requests</h5>
+            <div class="table-responsive">
+              <table class="table data-table">
+                <thead><tr><th>Subject</th><th>Date</th><th>Time</th><th>Room</th><th>Status</th><th>Notification</th><th>Action</th></tr></thead>
+                <tbody id="teacherExtraLectureRows"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

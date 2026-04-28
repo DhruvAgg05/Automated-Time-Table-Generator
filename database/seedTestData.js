@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const timetableModel = require("../models/timetableModel");
 
 const PASSWORD_HASH = "$2a$10$x6Vb6Poz2waSPl.X2x.EMO6kjV7/IFqYtQ.6VeDMi1dvjyWkQAPq2";
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -42,6 +43,7 @@ function buildAvailabilityRows(teachers) {
 async function resetTables(connection) {
   const tables = [
     "reports",
+    "extra_lecture_requests",
     "timetable",
     "teacher_availability",
     "teacher_subjects",
@@ -248,6 +250,7 @@ async function seed() {
     );
 
     await connection.commit();
+    await timetableModel.generateTimetable(1);
     console.log("Balanced timetable test data inserted successfully.");
   } catch (error) {
     await connection.rollback();

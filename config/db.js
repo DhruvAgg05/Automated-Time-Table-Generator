@@ -42,16 +42,50 @@ pool.initializeDatabase = async () => {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS extra_lecture_requests (
+      request_id INT PRIMARY KEY AUTO_INCREMENT,
+      teacher_id INT NOT NULL,
+      subject_id INT NOT NULL,
+      class_id INT NOT NULL,
+      section_id INT NOT NULL,
+      request_type ENUM('Lecture', 'Lab') NOT NULL DEFAULT 'Lecture',
+      room_type_needed ENUM('Classroom', 'Lab') NOT NULL DEFAULT 'Classroom',
+      room_id INT NULL,
+      requested_day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday') NOT NULL,
+      requested_date DATE NOT NULL,
+      slot_number INT NOT NULL,
+      end_slot_number INT NOT NULL,
+      start_time TIME NOT NULL,
+      end_time TIME NOT NULL,
+      status ENUM('Pending', 'Approved', 'Rejected', 'Cancelled', 'Completed', 'Needs Reschedule') NOT NULL DEFAULT 'Pending',
+      notes TEXT NULL,
+      admin_notes TEXT NULL,
+      notification_message TEXT NULL,
+      notification_seen TINYINT(1) NOT NULL DEFAULT 0,
+      approved_by INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_extra_requests_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+      CONSTRAINT fk_extra_requests_subject FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+      CONSTRAINT fk_extra_requests_class FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+      CONSTRAINT fk_extra_requests_section FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE,
+      CONSTRAINT fk_extra_requests_room FOREIGN KEY (room_id) REFERENCES classrooms(id) ON DELETE SET NULL,
+      CONSTRAINT fk_extra_requests_admin FOREIGN KEY (approved_by) REFERENCES admins(id) ON DELETE SET NULL
+    )
+  `);
+
   const [rows] = await pool.query("SELECT COUNT(*) AS total FROM slot_timings");
   if (!rows[0].total) {
     await pool.query(
       `INSERT INTO slot_timings (slot_number, start_time, end_time) VALUES
-       (1, '09:00:00', '10:00:00'),
-       (2, '10:00:00', '11:00:00'),
-       (3, '11:15:00', '12:15:00'),
-       (4, '13:00:00', '14:00:00'),
+       (1, '08:00:00', '09:00:00'),
+       (2, '09:00:00', '10:00:00'),
+       (3, '10:00:00', '11:00:00'),
+       (4, '11:00:00', '12:00:00'),
        (5, '14:00:00', '15:00:00'),
-       (6, '15:15:00', '16:15:00')`
+       (6, '15:00:00', '16:00:00'),
+       (7, '16:00:00', '17:00:00')`
     );
   }
 
@@ -83,6 +117,34 @@ pool.initializeDatabase = async () => {
     await pool.query(
       "ALTER TABLE subjects ADD COLUMN lab_sessions_per_week INT NOT NULL DEFAULT 0"
     );
+  }
+
+  if (!(await columnExists("extra_lecture_requests", "class_id"))) {
+    await pool.query("ALTER TABLE extra_lecture_requests ADD COLUMN class_id INT NOT NULL DEFAULT 1");
+  }
+
+  if (!(await columnExists("extra_lecture_requests", "section_id"))) {
+    await pool.query("ALTER TABLE extra_lecture_requests ADD COLUMN section_id INT NOT NULL DEFAULT 1");
+  }
+
+  if (!(await columnExists("extra_lecture_requests", "end_slot_number"))) {
+    await pool.query("ALTER TABLE extra_lecture_requests ADD COLUMN end_slot_number INT NOT NULL DEFAULT 1");
+  }
+
+  if (!(await columnExists("extra_lecture_requests", "admin_notes"))) {
+    await pool.query("ALTER TABLE extra_lecture_requests ADD COLUMN admin_notes TEXT NULL");
+  }
+
+  if (!(await columnExists("extra_lecture_requests", "notification_message"))) {
+    await pool.query("ALTER TABLE extra_lecture_requests ADD COLUMN notification_message TEXT NULL");
+  }
+
+  if (!(await columnExists("extra_lecture_requests", "notification_seen"))) {
+    await pool.query("ALTER TABLE extra_lecture_requests ADD COLUMN notification_seen TINYINT(1) NOT NULL DEFAULT 0");
+  }
+
+  if (!(await columnExists("extra_lecture_requests", "approved_by"))) {
+    await pool.query("ALTER TABLE extra_lecture_requests ADD COLUMN approved_by INT NULL");
   }
 
   await pool.query(`

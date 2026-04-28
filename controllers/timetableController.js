@@ -14,9 +14,12 @@ async function getAllTimetable(req, res, next) {
 async function generateTimetable(req, res, next) {
   try {
     const result = await timetableModel.generateTimetable(req.session.user.id);
+    const warningHtml = result.warnings && result.warnings.length
+      ? `<br><strong>Scheduling Notes:</strong><ul class="mb-0">${result.warnings.map((item) => `<li>${item}</li>`).join("")}</ul>`
+      : "";
     res.json({
       success: true,
-      message: `Timetable generated successfully with ${result.inserted} scheduled periods.`,
+      message: `Timetable generated successfully with ${result.inserted} scheduled periods.${warningHtml}`,
       data: result
     });
   } catch (error) {
@@ -94,6 +97,118 @@ async function getSchedulingSupport(req, res, next) {
   try {
     const data = await timetableModel.getSchedulingSupportView(req.query.day, req.query.slot, req.query.search || "");
     res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getRoomFreeSlots(req, res, next) {
+  try {
+    const data = await timetableModel.getRoomFreeSlotView({
+      requestedDate: req.query.requested_date,
+      roomType: req.query.room_type || "All",
+      search: req.query.search || ""
+    });
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getTeacherExtraLectureDashboard(req, res, next) {
+  try {
+    const requestedDate = req.query.requested_date || new Date().toISOString().slice(0, 10);
+    const data = await timetableModel.getExtraLectureDashboard(
+      req.session.user.teacher_id,
+      requestedDate,
+      req.query.room_type || "All",
+      req.query.search || ""
+    );
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getExtraLectureRequests(req, res, next) {
+  try {
+    const data = await timetableModel.getExtraLectureRequests({
+      teacherId: req.session.user.role === "teacher" ? req.session.user.teacher_id : undefined,
+      status: req.query.status || undefined
+    });
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function createExtraLectureRequest(req, res, next) {
+  try {
+    const id = await timetableModel.createExtraLectureRequest(req.session.user.teacher_id, req.body);
+    res.status(201).json({ success: true, message: "Extra lecture request submitted successfully.", id });
+  } catch (error) {
+    if (error.isGenerationError) {
+      return res.status(400).json({
+        success: false,
+        message: formatGenerationFailure(error.message, error.suggestions || [], error.meta || {})
+      });
+    }
+    next(error);
+  }
+}
+
+async function approveExtraLectureRequest(req, res, next) {
+  try {
+    const result = await timetableModel.approveExtraLectureRequest(req.params.id, req.session.user.id, req.body);
+    res.json({
+      success: true,
+      message: `Extra lecture request approved successfully in ${result.room_name}. Conflicting requests updated: ${result.conflictedRequests}.`
+    });
+  } catch (error) {
+    if (error.isGenerationError) {
+      return res.status(400).json({
+        success: false,
+        message: formatGenerationFailure(error.message, error.suggestions || [], error.meta || {})
+      });
+    }
+    next(error);
+  }
+}
+
+async function rejectExtraLectureRequest(req, res, next) {
+  try {
+    await timetableModel.rejectExtraLectureRequest(req.params.id, req.body.admin_notes);
+    res.json({ success: true, message: "Extra lecture request rejected successfully." });
+  } catch (error) {
+    if (error.isGenerationError) {
+      return res.status(400).json({
+        success: false,
+        message: formatGenerationFailure(error.message, error.suggestions || [], error.meta || {})
+      });
+    }
+    next(error);
+  }
+}
+
+async function cancelExtraLectureRequest(req, res, next) {
+  try {
+    await timetableModel.cancelExtraLectureRequest(req.params.id, req.session.user);
+    res.json({ success: true, message: "Extra lecture request cancelled successfully." });
+  } catch (error) {
+    if (error.isGenerationError) {
+      return res.status(400).json({
+        success: false,
+        message: formatGenerationFailure(error.message, error.suggestions || [], error.meta || {})
+      });
+    }
+    next(error);
+  }
+}
+
+async function markExtraLectureNotificationSeen(req, res, next) {
+  try {
+    await timetableModel.markExtraLectureNotificationSeen(req.params.id, req.session.user.teacher_id);
+    res.json({ success: true, message: "Notification marked as seen." });
   } catch (error) {
     next(error);
   }
@@ -197,7 +312,15 @@ module.exports = {
   getSectionGrid,
   getTeacherGrid,
   getTeacherFreeGrid,
+  getRoomFreeSlots,
   getSchedulingSupport,
+  getTeacherExtraLectureDashboard,
+  getExtraLectureRequests,
+  createExtraLectureRequest,
+  approveExtraLectureRequest,
+  rejectExtraLectureRequest,
+  cancelExtraLectureRequest,
+  markExtraLectureNotificationSeen,
   generateSummaryReport,
   getSlotTimings,
   createSlotTiming,
