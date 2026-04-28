@@ -1,71 +1,264 @@
 # Automated Time Table Management System
 
-Traditional final-year academic project built strictly with:
+A complete full-stack academic project for automatic timetable creation and timetable management using **HTML, CSS, JavaScript, Bootstrap, Node.js, Express.js, and MySQL**.
 
-- Frontend: HTML, CSS, JavaScript, Bootstrap
-- Backend: Node.js, Express.js
-- Database: MySQL
+This system is designed for colleges and departments that need a practical way to create, manage, validate, and print weekly timetables while reducing manual work and avoiding common scheduling conflicts.
 
-This project automatically generates and manages class schedules while preventing teacher clashes, room clashes, duplicate periods, and incomplete weekly lecture allocation.
+---
 
-## Project Features
+## 1. Project Overview
+
+The **Automated Time Table Management System** is a traditional final-year college project that helps educational institutions manage timetable planning in a structured and efficient way.  
+It provides separate access for **Admin**, **Teacher**, and **Student** users and supports both daily operations and advanced scheduling tasks.
+
+The system can:
+
+- manage academic master data such as teachers, students, subjects, departments, sections, and rooms
+- automatically generate weekly timetables
+- prevent teacher clashes, room clashes, and section clashes
+- support subjects that contain both theory and lab in a single subject entry
+- allow printable section-wise, teacher-wise, student-wise, and teacher timetable views
+- handle temporary extra lecture requests with approval and conflict checking
+
+This project is useful for demonstration, viva explanation, GitHub submission, and final-year project documentation because it follows a clean MVC structure and uses a fully traditional web stack.
+
+---
+
+## 2. Problem Statement
+
+In many colleges, timetable preparation is still handled manually. This process usually takes a lot of time and often creates problems such as:
+
+- the same teacher being assigned in two places at the same time
+- the same classroom or lab being allotted more than once in the same slot
+- subject lecture requirements not being completed properly
+- lab sessions being placed in non-consecutive or unsuitable slots
+- difficulty in checking teacher availability and room availability
+- difficulty in making temporary scheduling changes
+
+Manual timetable creation becomes even harder when institutions have multiple sections, limited laboratories, teacher availability restrictions, and changing slot timings.
+
+The **Automated Time Table Management System** solves this problem by automating timetable generation, validating scheduling feasibility, detecting conflicts, offering solution suggestions on failure, and giving clear timetable visibility to admin, teachers, and students.
+
+---
+
+## 3. Objectives
+
+- To reduce manual effort in timetable preparation.
+- To improve timetable accuracy and consistency.
+- To prevent teacher, room, and section clashes automatically.
+- To support realistic academic scheduling for theory and lab subjects.
+- To provide separate role-based access for admin, teachers, and students.
+- To provide printable professional timetable views.
+- To support temporary extra lecture and lab session management.
+- To make timetable management beginner-friendly and easy to explain in a viva.
+
+---
+
+## 4. Features
 
 ### Admin Module
 
-- Secure login and logout using session-based authentication
-- Dashboard with total teachers, students, subjects, rooms, classes, and recent timetable entries
-- Full CRUD for teachers, students, subjects, classrooms
-- Department, class, and section setup
-- Teacher availability management
-- Subject-to-class and teacher-to-subject assignment
-- Automatic timetable generation
-- Manual timetable override
-- Timetable deletion and regeneration
-- Teacher workload report
-- Room allocation report
-- Printable timetable and printable report pages
+- Secure admin login and logout
+- Dashboard with system overview
+- Manage teachers: add, edit, delete, view
+- Manage students: add, edit, delete, view
+- Manage subjects: add, edit, delete, view
+- Manage departments, classes, and sections
+- Manage classrooms and laboratories
+- Manage teacher availability
+- Assign teacher to subject
+- Assign subject to section
+- Customize lecture duration and lab duration
+- Customize slot timings
+- Generate timetable automatically
+- Edit timetable manually
+- Delete and regenerate timetable
+- View teacher-wise printable timetable
+- View teacher free slot grid
+- View room free slot grid
+- View scheduling support data before manual changes
+- Approve or reject extra lecture requests
+- Reset teacher and student passwords
+- Generate reports and print timetables
 
 ### Teacher Module
 
-- Teacher login
+- Secure teacher login
 - View assigned subjects
-- View weekly schedule
+- View weekly timetable grid
+- View daily and weekly schedule
 - View free periods
-- View availability data
+- View own availability
+- Request extra lecture or extra lab session
+- Check free rooms before requesting
+- Cancel pending or approved temporary lecture request before schedule completion
+- View notification if a requested slot becomes unavailable
+- Update own profile
+- Change password
 
 ### Student Module
 
-- Student login
-- View weekly schedule
+- Secure student login
+- View class timetable in weekly grid format
+- View subject schedule
 - View assigned faculty
-- View subject-wise timetable entries
+- View daily and weekly schedule
+- Update own profile
+- Change password
 
-## Project Structure
+### Timetable Engine
 
-```text
-project-root/
-├── server.js
-├── package.json
-├── package-lock.json
-├── config/
-│   └── db.js
-├── routes/
-├── controllers/
-├── models/
-├── middleware/
-├── views/
-├── public/
-│   ├── css/
-│   ├── js/
-│   └── images/
-├── database/
-│   └── schema.sql
-└── README.md
-```
+- Automatic timetable generation
+- Theory-only, lab-only, and theory + lab support in one subject
+- Room capacity validation
+- Teacher availability validation
+- Lab preference for lab rooms
+- Consecutive slot allocation for labs
+- Smart feasibility checking before generation
+- Conflict detection and duplicate prevention
+- Balanced scheduling with preference to avoid continuous teacher overload
+- Failure reason with solution suggestions
 
-## Database Design
+### Extra Lecture / Temporary Lecture System
 
-Main tables included:
+- Teacher can request extra lecture or lab
+- Admin can approve, reject, cancel, or modify room assignment
+- Temporary lecture clashes are validated
+- Conflicting pending requests are automatically marked for reschedule
+- Notification message is shown to affected teacher
+- Completed temporary lectures are auto-removed from active scheduling and moved by status
+
+### Reports and Printing
+
+- Teacher workload report
+- Room allocation report
+- Summary report
+- Section timetable print
+- Teacher timetable print
+- Student timetable print
+- Teacher-wise printable timetable
+- Clean print layout using `@media print`
+
+### Data Entry Support
+
+- Manual entry forms
+- Excel/CSV bulk upload for:
+  - teachers
+  - students
+  - subjects
+  - classrooms
+- Dummy data seeding for easy testing
+
+---
+
+## 5. Tech Stack
+
+### Frontend
+
+- HTML5
+- CSS3
+- JavaScript
+- Bootstrap 5
+
+### Backend
+
+- Node.js
+- Express.js
+
+### Database
+
+- MySQL
+
+### Packages / Tools Used
+
+- `mysql2` for MySQL connection pooling
+- `express-session` for session-based authentication
+- `bcryptjs` for password hashing
+- `multer` for file upload handling
+- `xlsx` for Excel/CSV parsing
+- `nodemon` for development mode
+
+---
+
+## 6. System Modules
+
+### 6.1 Authentication Module
+
+This module handles role-based login for admin, teacher, and student users.  
+It uses session-based authentication and protects routes based on user role.
+
+### 6.2 Admin Management Module
+
+This module is the main control center of the system.  
+Admin can manage all master records, configure scheduling settings, generate timetables, approve extra lecture requests, and print reports.
+
+### 6.3 Teacher Management Module
+
+This module stores teacher details, department mapping, workload limits, availability, and subject assignments.  
+It also supports teacher-side timetable viewing and temporary lecture requests.
+
+### 6.4 Student Management Module
+
+This module manages student records, roll numbers, class/section mapping, and student-side timetable viewing.
+
+### 6.5 Subject Management Module
+
+This module supports:
+
+- theory-only subjects
+- lab-only subjects
+- theory + lab subjects in the same record
+
+It stores subject code, name, credits, weekly theory lectures, weekly lab sessions, and department/class assignment.
+
+### 6.6 Classroom and Lab Management Module
+
+This module stores room names, room type, and capacity.  
+The timetable engine uses this data to allocate suitable rooms while preventing double booking.
+
+### 6.7 Teacher Availability Module
+
+This module allows admin to mark slot-wise teacher availability.  
+The timetable generator respects only those available slots while scheduling.
+
+### 6.8 Timetable Generation Module
+
+This is the core module of the project.  
+It automatically creates a timetable after checking slot compatibility, teacher availability, room availability, subject requirements, and lab continuity rules.
+
+### 6.9 Timetable Visibility and Printing Module
+
+This module displays:
+
+- section timetable
+- student timetable grid
+- teacher timetable grid
+- teacher-wise admin timetable
+
+It also provides clean printable layouts that hide non-essential page elements.
+
+### 6.10 Extra Lecture Management Module
+
+This module allows teachers to request temporary lectures or labs for a specific date and slot.  
+Admin can approve, reject, cancel, or reassign room allocation while the system checks for conflicts.
+
+### 6.11 Profile Management Module
+
+This module allows admin, teacher, and student users to:
+
+- view their profile
+- update basic details
+- change password
+
+Admin can also reset teacher and student passwords.
+
+---
+
+## 7. Database Design
+
+The system uses a normalized MySQL schema with proper primary keys, foreign keys, and role-based relationships.
+
+### Main Tables
 
 - `admins`
 - `users`
@@ -75,242 +268,435 @@ Main tables included:
 - `classes`
 - `sections`
 - `subjects`
-- `classrooms`
+- `class_subjects`
 - `teacher_subjects`
 - `teacher_availability`
+- `classrooms`
 - `timetable`
 - `reports`
+- `timetable_settings`
+- `slot_timings`
+- `extra_lecture_requests`
 
-Additional normalized helper table:
+### Important Database Concepts Used
 
-- `class_subjects`
+- foreign key relationships for consistency
+- unique and normalized mappings for users and academic records
+- session-based login data separation
+- separate tables for timetable settings and slot timings
+- separate table for temporary extra lecture workflow
 
-The schema uses:
+### Subject Table Supports
 
-- Primary keys
-- Foreign keys
-- Unique constraints
-- Basic normalization for departments, classes, sections, subjects, and allocations
-- Dummy sample data for direct demonstration
+- subject name
+- subject code
+- subject type
+- theory lectures per week
+- lab sessions per week
+- subject credits
 
-## Demo Credentials
+This allows one subject record to store both theory and lab requirements together.
 
-All sample accounts use password: `admin123`
+---
 
-- Admin: `admin`
-- Teacher: `teacher1`
-- Teacher: `teacher2`
-- Student: `student1`
-- Student: `student2`
+## 8. Timetable Generation Logic
 
-## Setup Instructions
+The timetable engine is designed to be practical, easy to explain, and realistic for college usage.
 
-### 1. Create MySQL Database
+### Main Logic Flow
 
-Open MySQL and run:
+1. Load sections, subjects, teacher mappings, availability, room data, slot timings, and timetable settings.
+2. Validate whether timetable generation is feasible before final scheduling.
+3. Build scheduling tasks based on theory and lab requirements.
+4. Prefer stricter tasks such as lab sessions first where consecutive slots are required.
+5. Try valid combinations of day, slot, teacher availability, and room allocation.
+6. Save only conflict-free assignments.
+7. Roll back if timetable cannot be completed correctly.
 
-```sql
-SOURCE database/schema.sql;
+### Rules Implemented
+
+- A teacher cannot be assigned to two classes at the same time.
+- A classroom or lab cannot be allocated twice at the same time.
+- A section cannot have two subjects in the same slot.
+- Required weekly lectures and lab sessions must be completed.
+- Teacher availability must be respected.
+- Lab subjects prefer lab rooms.
+- Room capacity must be sufficient for the section strength.
+- Duplicate scheduling is not allowed.
+- Lab sessions are assigned in consecutive slots if required.
+- Teacher schedules try to avoid unnecessary back-to-back overload.
+
+### Smart Validation Before Generation
+
+Before timetable generation, the system checks:
+
+- whether lecture duration fits available slots
+- whether lab duration fits available consecutive slots
+- whether enough classrooms and labs exist
+- whether teacher availability is sufficient
+- whether subject demand can fit in available weekly capacity
+- whether teacher load exceeds realistic availability
+
+### Failure Detection and Suggestions
+
+If generation is not possible, the system stops and shows a clear reason such as:
+
+- not enough classrooms
+- not enough lab rooms
+- teacher availability too limited
+- consecutive lab slots not available
+- slot timing mismatch with duration settings
+
+It also provides practical suggestions such as:
+
+- add more rooms
+- adjust teacher availability
+- reduce weekly lecture load
+- update slot timings
+
+This makes the project more professional and suitable for real academic demonstration.
+
+---
+
+## 9. Extra Lecture Management Logic
+
+The system includes a temporary lecture management feature for practical day-to-day college use.
+
+### Workflow
+
+1. Teacher checks own free slots and room availability.
+2. Teacher submits an extra lecture or lab request for a specific date.
+3. Admin reviews pending requests.
+4. Admin approves, rejects, cancels, or assigns a room.
+5. System validates:
+   - teacher free slot
+   - room free slot
+   - section slot availability
+   - request type and room type
+   - overlap with existing timetable
+   - overlap with approved temporary requests
+6. If one request is approved first, conflicting pending requests are automatically updated and teacher is notified.
+7. After the scheduled date/time passes, the temporary lecture is moved out of active use by status cleanup.
+
+### Benefits
+
+- supports makeup classes and extra labs
+- prevents temporary scheduling clashes
+- gives admin visibility into room and teacher availability
+- keeps extra lectures separate from permanent timetable generation logic
+
+---
+
+## 10. Installation Steps
+
+### Step 1: Clone or Download the Project
+
+```bash
+git clone <your-repository-url>
+cd automated-time-table-management-system
 ```
 
-Or copy the full SQL content from [database/schema.sql](D:/Automated%20Time%20Table%20Generator/database/schema.sql) and execute it in MySQL Workbench.
+If the project is already available locally, open the project folder directly.
 
-### 2. Configure Database Connection
-
-Update the values in [config/db.js](D:/Automated%20Time%20Table%20Generator/config/db.js) if needed:
-
-- `host`
-- `user`
-- `password`
-- `database`
-
-Default database name:
-
-```text
-automated_timetable_db
-```
-
-### 3. Install Dependencies
+### Step 2: Install Node.js Dependencies
 
 ```bash
 npm install
 ```
 
-### 4. Start the Server
+### Step 3: Create MySQL Database
+
+Create a MySQL database with the following name:
+
+```sql
+CREATE DATABASE automated_timetable_db;
+```
+
+### Step 4: Import Database Schema
+
+Import the SQL file:
+
+```sql
+USE automated_timetable_db;
+SOURCE database/schema.sql;
+```
+
+You can also import [schema.sql](D:\Automated Time Table Generator\database\schema.sql) using MySQL Workbench or phpMyAdmin.
+
+### Step 5: Verify Database Configuration
+
+The project uses the following default configuration in [db.js](D:\Automated Time Table Generator\config\db.js):
+
+```text
+host: localhost
+user: root
+password: root123
+database: automated_timetable_db
+```
+
+If required, update the values in [db.js](D:\Automated Time Table Generator\config\db.js) or use environment variables:
+
+- `DB_HOST`
+- `DB_USER`
+- `DB_PASSWORD`
+- `DB_NAME`
+
+### Step 6: Optional Balanced Dummy Test Data
+
+To load realistic sample data for timetable testing:
+
+```bash
+npm run seed:test-data
+```
+
+This creates a balanced academic dataset and generates a working sample timetable.
+
+### Step 7: Run the Project
+
+For normal run:
 
 ```bash
 npm start
 ```
 
-### 5. Open in Browser
+For development mode:
+
+```bash
+npm run dev
+```
+
+### Step 8: Open the Application
+
+Open in browser:
 
 ```text
 http://localhost:3000
 ```
 
-## Important Business Rules Implemented
+---
 
-- A teacher cannot be scheduled in two places at the same time
-- A classroom cannot be allocated to two classes at the same time
-- A section cannot have two subjects in the same slot
-- Required subject lectures per week must be completed
-- Teacher availability is checked before allocation
-- Lab subjects prefer lab rooms
-- Room capacity is checked against section strength
-- Admin can manually edit generated timetable entries
-- Duplicate schedule entries are blocked by both logic and database constraints
+## 11. Default Login Credentials
 
-## Timetable Generation Logic
+All seeded sample accounts use the password:
 
-The timetable generator in [models/timetableModel.js](D:/Automated%20Time%20Table%20Generator/models/timetableModel.js) uses a simple greedy algorithm designed for easy viva explanation:
+```text
+admin123
+```
 
-1. Load sections, class-subject mapping, teacher-subject mapping, teacher availability, and rooms.
-2. For each section, collect all required subjects and the number of lectures needed per week.
-3. Try day-by-day and slot-by-slot allocation from Monday to Saturday.
-4. Before assigning a period, check:
-   - teacher is available
-   - teacher is not already busy in that slot
-   - section is not already busy
-   - room is free
-   - room type and capacity are suitable
-   - teacher daily load does not exceed limit
-5. Save successful allocations into the `timetable` table.
-6. If any subject cannot be fully scheduled, rollback the transaction and show an error.
+### Admin Login
 
-This logic is simple, deterministic, and easy to present in a final-year viva.
+- Username: `admin`
+- Password: `admin123`
+- Role: `admin`
 
-## Main Routes
+### Teacher Login
 
-### Authentication
+- Username: `teacher1`
+- Password: `admin123`
+- Role: `teacher`
 
-- `POST /api/admin/login`
-- `POST /api/admin/logout`
-- `GET /api/admin/me`
+### Student Login
 
-### Admin and Reports
+- Username: `student1`
+- Password: `admin123`
+- Role: `student`
 
-- `GET /api/admin/dashboard`
-- `GET /api/admin/teacher-workload`
-- `GET /api/admin/room-allocation`
-- `GET /api/admin/reports`
+You can use other seeded teacher and student accounts after importing the schema or running the seed script.
 
-### Teachers
+---
 
-- `GET /api/teachers`
-- `POST /api/teachers`
-- `PUT /api/teachers/:id`
-- `DELETE /api/teachers/:id`
-- `GET /api/teachers/:id/availability`
-- `POST /api/teachers/:id/availability`
-- `GET /api/teachers/portal/me`
+## 12. Project Folder Structure
 
-### Students
+```text
+project-root/
+|
+|-- server.js
+|-- package.json
+|-- package-lock.json
+|
+|-- config/
+|   |-- db.js
+|
+|-- routes/
+|   |-- adminRoutes.js
+|   |-- teacherRoutes.js
+|   |-- studentRoutes.js
+|   |-- subjectRoutes.js
+|   |-- classroomRoutes.js
+|   |-- timetableRoutes.js
+|
+|-- controllers/
+|   |-- adminController.js
+|   |-- teacherController.js
+|   |-- studentController.js
+|   |-- subjectController.js
+|   |-- classroomController.js
+|   |-- timetableController.js
+|
+|-- models/
+|   |-- adminModel.js
+|   |-- teacherModel.js
+|   |-- studentModel.js
+|   |-- subjectModel.js
+|   |-- classroomModel.js
+|   |-- timetableModel.js
+|
+|-- middleware/
+|   |-- authMiddleware.js
+|   |-- uploadMiddleware.js
+|   |-- excelHelper.js
+|
+|-- views/
+|   |-- login.html
+|   |-- dashboard.html
+|   |-- teachers.html
+|   |-- students.html
+|   |-- subjects.html
+|   |-- classrooms.html
+|   |-- timetable.html
+|   |-- reports.html
+|   |-- profile.html
+|
+|-- public/
+|   |-- css/
+|   |   |-- style.css
+|   |-- js/
+|   |   |-- app.js
+|   |-- images/
+|
+|-- database/
+|   |-- schema.sql
+|   |-- seedTestData.js
+|
+|-- README.md
+```
 
-- `GET /api/students`
-- `POST /api/students`
-- `PUT /api/students/:id`
-- `DELETE /api/students/:id`
-- `GET /api/students/portal/me`
+### Folder Explanation
 
-### Subjects and Academic Setup
+- `server.js`: main application entry point
+- `config/`: MySQL configuration and initialization
+- `routes/`: route definitions
+- `controllers/`: request handling logic
+- `models/`: MySQL query and business logic layer
+- `middleware/`: authentication, upload, and Excel helper utilities
+- `views/`: frontend pages
+- `public/`: CSS and JavaScript assets
+- `database/`: schema and balanced dummy data seeding
 
-- `GET /api/subjects`
-- `POST /api/subjects`
-- `PUT /api/subjects/:id`
-- `DELETE /api/subjects/:id`
-- `GET /api/subjects/reference-data`
-- `POST /api/subjects/class-assignments`
-- `POST /api/subjects/teacher-assignments`
+---
 
-### Classrooms
+## 13. Screenshots
 
-- `GET /api/classrooms`
-- `POST /api/classrooms`
-- `PUT /api/classrooms/:id`
-- `DELETE /api/classrooms/:id`
-- `GET /api/classrooms/usage/report`
+Add screenshots here before final submission or GitHub upload.
 
-### Timetable
+### Login Page
 
-- `GET /api/timetable`
-- `POST /api/timetable/generate`
-- `PUT /api/timetable/:id`
-- `DELETE /api/timetable/:id`
-- `DELETE /api/timetable`
-- `GET /api/timetable/section/:sectionId`
-- `GET /api/timetable/reports/summary`
+`[Insert screenshot here]`
 
-## Testing Instructions
+### Admin Dashboard
 
-### Manual Functional Testing
+`[Insert screenshot here]`
 
-1. Import the SQL schema and sample data.
-2. Start the application using `npm start`.
-3. Login as admin and verify dashboard counts.
-4. Add, edit, and delete teachers, students, subjects, and classrooms.
-5. Set teacher availability.
-6. Create class-subject and teacher-subject assignments.
-7. Click `Generate Timetable Automatically`.
-8. Verify that:
-   - no teacher appears in two places at the same time
-   - no room is repeated in the same slot
-   - lab subjects are placed in labs when available
-   - room capacity is enough for the assigned section
-9. Open the timetable page and test manual override.
-10. Open reports and generate workload and room allocation reports.
-11. Print the timetable and reports using browser print.
-12. Login as teacher and student to verify role-specific schedules.
+### Teacher Management
 
-### Basic Code Verification Completed
+`[Insert screenshot here]`
 
-- `node --check` run successfully on all project JavaScript files
-- `npm install` completed successfully and generated `package-lock.json`
+### Student Management
 
-## Viva Explanation Notes
+`[Insert screenshot here]`
 
-### Problem Statement
+### Subject Management
 
-Manual timetable creation takes time and often creates conflicts between teachers, classrooms, and subjects. This system automates the process and reduces scheduling errors.
+`[Insert screenshot here]`
 
-### Why This Project Is Useful
+### Classroom / Lab Management
 
-- Reduces manual effort
-- Improves scheduling accuracy
-- Prevents clashes automatically
-- Provides one system for admin, teachers, and students
+`[Insert screenshot here]`
 
-### Technologies Used
+### Automatic Timetable Generation
 
-- HTML, CSS, JavaScript, Bootstrap for frontend
-- Node.js and Express.js for backend
-- MySQL for relational data storage
-- Express Session for session-based login
-- MySQL connection pooling using `mysql2`
+`[Insert screenshot here]`
 
-### MVC Pattern Used
+### Student Timetable Grid
 
-- `routes/` receives HTTP requests
-- `controllers/` handles request logic
-- `models/` communicates with MySQL
-- `views/` contains the frontend pages
+`[Insert screenshot here]`
 
-### How Conflict Prevention Works
+### Teacher Timetable Grid
 
-- Unique constraints in MySQL prevent duplicate room, teacher, and section slot allocation
-- Business logic checks availability before inserting timetable rows
-- Timetable generation runs inside a database transaction
-- On failure, the transaction is rolled back
+`[Insert screenshot here]`
 
-### Possible Future Improvements
+### Teacher-wise Printable Timetable
 
-- Excel export
-- More advanced optimization algorithm
-- Semester-wise filtering
+`[Insert screenshot here]`
+
+### Extra Lecture Request System
+
+`[Insert screenshot here]`
+
+### Reports Page
+
+`[Insert screenshot here]`
+
+---
+
+## 14. Future Improvements
+
+- Export timetable to PDF and Excel
+- Semester-wise and academic-year-wise timetable filtering
 - Attendance integration
-- Notification system
+- Notification through email or SMS
+- More advanced optimization using genetic algorithm or heuristic scheduling
+- Multi-campus or multi-building room mapping
+- Mobile-friendly student quick timetable view
+- Faculty substitution management for absent teachers
+- Holiday calendar integration
+- Audit log for admin actions
 
-## Notes
+---
 
-- This project is intentionally beginner-friendly for academic submission and viva presentation.
-- The UI is built with plain HTML, Bootstrap, and vanilla JavaScript only.
-- No React, Vue, Angular, Next.js, MongoDB, Firebase, or other disallowed technologies are used.
+## 15. Conclusion
+
+The **Automated Time Table Management System** successfully solves the common problems of manual timetable preparation by automating scheduling, validating feasibility, and providing clear timetable visibility for all users.
+
+The project is practical, realistic, and suitable for final-year academic submission because it includes:
+
+- complete CRUD functionality
+- role-based access control
+- automatic timetable generation
+- advanced conflict validation
+- temporary lecture handling
+- printable professional timetable views
+- beginner-friendly MVC structure
+
+This system demonstrates how traditional web technologies can be used to build a useful and reliable academic management application without relying on modern frontend frameworks.
+
+---
+
+## 16. Author
+
+**Project Title:** Automated Time Table Management System  
+**Project Type:** Final-Year Academic Project  
+**Tech Stack:** HTML, CSS, JavaScript, Bootstrap, Node.js, Express.js, MySQL  
+**Prepared For:** College Project Submission / Viva Demonstration  
+
+You may replace this section with your own:
+
+- Student Name
+- Roll Number
+- Department
+- College Name
+- Guide / Supervisor Name
+- Academic Year
+
+---
+
+## 17. Notes for Viva
+
+- The project follows the MVC pattern.
+- The system uses session-based authentication.
+- MySQL stores all structured academic and timetable data.
+- The timetable engine validates feasibility before generation.
+- Theory and lab can be handled in one subject record.
+- Temporary extra lectures are managed separately from the permanent timetable.
+- The project remains a traditional stack solution without React, Next.js, MongoDB, Firebase, or other disallowed technologies.
+
