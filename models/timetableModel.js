@@ -240,13 +240,6 @@ function countTeacherAvailableLabWindows(labSequences, teacherId, availabilityLo
   ), 0);
 }
 
-function chooseRoom(classrooms, roomType, strength, roomBusySet, day, slot) {
-  const preferred = classrooms.filter((room) => room.room_type === roomType && room.capacity >= strength);
-  const fallback = classrooms.filter((room) => room.capacity >= strength);
-  const candidates = preferred.length ? preferred : fallback;
-  return candidates.find((room) => !roomBusySet.has(`${room.id}-${day}-${slot}`));
-}
-
 function validateSlotConfiguration(slotRows, settings, hasLabSubjects) {
   const slotMeta = buildSlotMeta(slotRows);
   const lectureCompatible = slotMeta.some((slot) => slot.duration === settings.lecture_duration_minutes);

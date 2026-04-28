@@ -200,8 +200,8 @@ async function seed() {
       [students]
     );
     await connection.query(
-      "INSERT INTO admins (username, password_hash, full_name, email) VALUES ?",
-      [[["admin", PASSWORD_HASH, "System Administrator", "admin@example.com"]]]
+      "INSERT INTO admins (username, password_hash, full_name, email, phone) VALUES ?",
+      [[["admin", PASSWORD_HASH, "System Administrator", "admin@example.com", "9876500100"]]]
     );
     await connection.query(
       "INSERT INTO users (username, password_hash, role, teacher_id, student_id) VALUES ?",

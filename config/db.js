@@ -119,6 +119,10 @@ pool.initializeDatabase = async () => {
     );
   }
 
+  if (!(await columnExists("admins", "phone"))) {
+    await pool.query("ALTER TABLE admins ADD COLUMN phone VARCHAR(20) NULL");
+  }
+
   if (!(await columnExists("extra_lecture_requests", "class_id"))) {
     await pool.query("ALTER TABLE extra_lecture_requests ADD COLUMN class_id INT NOT NULL DEFAULT 1");
   }

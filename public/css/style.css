@@ -143,12 +143,51 @@ body {
   vertical-align: middle;
 }
 
+.timetable-grid thead th {
+  background: #eaf2ff;
+  color: #0f172a;
+  text-align: center;
+  font-weight: 700;
+}
+
+.timetable-grid tbody th {
+  background: #f8fbff;
+  color: #0f172a;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .grid-cell {
   background: linear-gradient(180deg, #ffffff, #f7fbff);
   border-radius: 12px;
   padding: 0.6rem;
   border: 1px solid #cfe0fb;
   min-height: 92px;
+}
+
+.grid-title {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.grid-meta {
+  font-size: 0.88rem;
+  color: #475569;
+}
+
+.grid-free {
+  color: #94a3b8;
+  font-weight: 600;
+  text-align: center;
+}
+
+.print-area {
+  border: 1px solid var(--border-soft);
+}
+
+.print-area.print-target-active {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .login-layout {
@@ -228,9 +267,68 @@ body {
 
   body {
     background: #fff;
+    color: #000;
   }
 
-  .content-wrap {
+  body * {
+    visibility: hidden;
+  }
+
+  .print-target-active,
+  .print-target-active * {
+    visibility: visible !important;
+  }
+
+  .print-target-active {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
     padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: #fff;
+  }
+
+  .print-target-active .card-body {
+    padding: 0;
+  }
+
+  .print-target-active .mini-note {
+    color: #000;
+  }
+
+  .timetable-grid {
+    width: 100% !important;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .timetable-grid th,
+  .timetable-grid td {
+    min-width: auto;
+    border: 1px solid #000 !important;
+    padding: 8px !important;
+  }
+
+  .timetable-grid thead th,
+  .timetable-grid tbody th {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .grid-cell {
+    border: 0;
+    background: #fff;
+    min-height: auto;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  .grid-title,
+  .grid-meta,
+  .grid-free {
+    color: #000 !important;
   }
 }

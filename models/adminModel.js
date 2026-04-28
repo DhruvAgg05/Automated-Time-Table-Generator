@@ -5,6 +5,11 @@ async function getAdminByUsername(username) {
   return rows[0];
 }
 
+async function getAdminById(id) {
+  const [rows] = await pool.query("SELECT * FROM admins WHERE id = ?", [id]);
+  return rows[0];
+}
+
 async function getUserByUsername(username) {
   const [rows] = await pool.query(
     `SELECT u.*,
@@ -106,12 +111,122 @@ async function getReports() {
   return rows;
 }
 
+async function getProfileForSessionUser(user) {
+  if (!user) {
+    return null;
+  }
+
+  if (user.role === "admin") {
+    const [rows] = await pool.query(
+      `SELECT id, username, full_name, email, phone, 'admin' AS role
+       FROM admins
+       WHERE id = ?`,
+      [user.id]
+    );
+    return rows[0];
+  }
+
+  if (user.role === "teacher") {
+    const [rows] = await pool.query(
+      `SELECT u.id AS user_id, u.username, u.role,
+              t.id, t.teacher_code, t.full_name, t.email, t.phone, t.designation,
+              d.name AS department_name
+       FROM users u
+       JOIN teachers t ON u.teacher_id = t.id
+       LEFT JOIN departments d ON t.department_id = d.id
+       WHERE u.id = ?`,
+      [user.id]
+    );
+    return rows[0];
+  }
+
+  const [rows] = await pool.query(
+    `SELECT u.id AS user_id, u.username, u.role,
+            s.id, s.roll_number, s.full_name, s.email, s.phone,
+            d.name AS department_name, c.class_name, sec.section_name
+     FROM users u
+     JOIN students s ON u.student_id = s.id
+     LEFT JOIN departments d ON s.department_id = d.id
+     LEFT JOIN classes c ON s.class_id = c.id
+     LEFT JOIN sections sec ON s.section_id = sec.id
+     WHERE u.id = ?`,
+    [user.id]
+  );
+  return rows[0];
+}
+
+async function updateOwnProfile(user, payload) {
+  if (user.role === "admin") {
+    await pool.query(
+      "UPDATE admins SET full_name = ?, email = ?, phone = ? WHERE id = ?",
+      [payload.full_name, payload.email, payload.phone || null, user.id]
+    );
+    return;
+  }
+
+  if (user.role === "teacher") {
+    await pool.query(
+      "UPDATE teachers SET teacher_code = ?, full_name = ?, email = ?, phone = ? WHERE id = ?",
+      [payload.teacher_code, payload.full_name, payload.email, payload.phone || null, user.teacher_id]
+    );
+    return;
+  }
+
+  await pool.query(
+    "UPDATE students SET roll_number = ?, full_name = ?, email = ?, phone = ? WHERE id = ?",
+    [payload.roll_number, payload.full_name, payload.email, payload.phone || null, user.student_id]
+  );
+}
+
+async function updatePasswordForSessionUser(user, passwordHash) {
+  if (user.role === "admin") {
+    await pool.query("UPDATE admins SET password_hash = ? WHERE id = ?", [passwordHash, user.id]);
+    return;
+  }
+
+  await pool.query("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, user.id]);
+}
+
+async function getManagedUserProfiles() {
+  const [teachers] = await pool.query(
+    `SELECT 'teacher' AS role, u.id AS user_id, t.id AS entity_id, u.username, t.full_name, t.email, t.phone,
+            t.teacher_code AS code_or_roll, d.name AS department_name
+     FROM users u
+     JOIN teachers t ON u.teacher_id = t.id
+     LEFT JOIN departments d ON t.department_id = d.id
+     WHERE u.role = 'teacher'
+     ORDER BY t.full_name`
+  );
+
+  const [students] = await pool.query(
+    `SELECT 'student' AS role, u.id AS user_id, s.id AS entity_id, u.username, s.full_name, s.email, s.phone,
+            s.roll_number AS code_or_roll, d.name AS department_name
+     FROM users u
+     JOIN students s ON u.student_id = s.id
+     LEFT JOIN departments d ON s.department_id = d.id
+     WHERE u.role = 'student'
+     ORDER BY s.full_name`
+  );
+
+  return { teachers, students };
+}
+
+async function resetUserPassword(userId, passwordHash) {
+  await pool.query("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, userId]);
+}
+
 module.exports = {
   getAdminByUsername,
+  getAdminById,
   getUserByUsername,
   getDashboardStats,
   getTeacherWorkload,
   getRoomAllocationReport,
   saveReport,
-  getReports
+  getReports,
+  getProfileForSessionUser,
+  updateOwnProfile,
+  updatePasswordForSessionUser,
+  getManagedUserProfiles,
+  resetUserPassword
 };

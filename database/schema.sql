@@ -64,6 +64,7 @@ CREATE TABLE admins (
   password_hash VARCHAR(255) NOT NULL,
   full_name VARCHAR(120) NOT NULL,
   email VARCHAR(120) NOT NULL UNIQUE,
+  phone VARCHAR(20) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -269,8 +270,8 @@ INSERT INTO students (roll_number, full_name, email, phone, department_id, class
 ('IT3A002', 'Rohan Das', 'rohan.das@example.com', '9991001011', 2, 3, 4),
 ('IT3A003', 'Pooja Sharma', 'pooja.sharma@example.com', '9991001012', 2, 3, 4);
 
-INSERT INTO admins (username, password_hash, full_name, email) VALUES
-('admin', '$2a$10$x6Vb6Poz2waSPl.X2x.EMO6kjV7/IFqYtQ.6VeDMi1dvjyWkQAPq2', 'System Administrator', 'admin@example.com');
+INSERT INTO admins (username, password_hash, full_name, email, phone) VALUES
+('admin', '$2a$10$x6Vb6Poz2waSPl.X2x.EMO6kjV7/IFqYtQ.6VeDMi1dvjyWkQAPq2', 'System Administrator', 'admin@example.com', '9876500100');
 
 INSERT INTO users (username, password_hash, role, teacher_id, student_id) VALUES
 ('teacher1', '$2a$10$x6Vb6Poz2waSPl.X2x.EMO6kjV7/IFqYtQ.6VeDMi1dvjyWkQAPq2', 'teacher', 1, NULL),

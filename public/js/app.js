@@ -10,6 +10,11 @@ const API = {
 let SLOT_LABELS = {};
 
 let CURRENT_USER = null;
+let CURRENT_PROFILE = null;
+
+window.addEventListener("afterprint", () => {
+  clearPrintTargets();
+});
 
 document.addEventListener("DOMContentLoaded", async () => {
   const page = document.body.dataset.page;
@@ -48,6 +53,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (page === "reports") {
     initReportsPage();
+  }
+
+  if (page === "profile") {
+    initProfilePage();
   }
 });
 
@@ -161,6 +170,25 @@ async function hydrateLayout() {
   } catch (error) {
     window.location.href = "/login";
   }
+}
+
+function clearPrintTargets() {
+  document.querySelectorAll(".print-area").forEach((element) => {
+    element.classList.remove("print-target-active");
+  });
+  delete document.body.dataset.printTarget;
+}
+
+function printOnlyTarget(targetId) {
+  clearPrintTargets();
+  const target = document.getElementById(targetId);
+  if (!target) {
+    return;
+  }
+
+  target.classList.add("print-target-active");
+  document.body.dataset.printTarget = targetId;
+  window.print();
 }
 
 function initLoginPage() {
@@ -784,7 +812,19 @@ window.deleteClassroom = async function deleteClassroom(id) {
 
 async function initTimetablePage() {
   bindSearch("timetableSearch", "timetableTable");
-  document.getElementById("printTimetableBtn").addEventListener("click", () => window.print());
+  document.getElementById("printTimetableBtn").addEventListener("click", () => {
+    if (CURRENT_USER.role === "admin") {
+      const hasGrid = document.getElementById("gridContainer").querySelector("table");
+      if (!hasGrid) {
+        showMessage("timetableMessage", "Select a section first to print the section timetable.", "danger");
+        return;
+      }
+    }
+    printOnlyTarget("primaryGridCard");
+  });
+  document.getElementById("printPrimaryGridBtn").addEventListener("click", () => {
+    printOnlyTarget("primaryGridCard");
+  });
   const today = getTodayLocal();
   if (document.getElementById("roomFreeDate")) document.getElementById("roomFreeDate").value = today;
   if (document.getElementById("extraLectureDate")) document.getElementById("extraLectureDate").value = today;
@@ -794,8 +834,10 @@ async function initTimetablePage() {
     document.getElementById("supportPanel").classList.remove("hidden");
     document.getElementById("roomFreePanel").classList.remove("hidden");
     document.getElementById("adminExtraLecturePanel").classList.remove("hidden");
-    document.getElementById("teacherFreePanel").classList.remove("hidden");
+    document.getElementById("primaryGridCard").classList.remove("hidden");
     document.getElementById("roomFreeGridPanel").classList.remove("hidden");
+    document.getElementById("teacherPrintableCard").classList.remove("hidden");
+    document.getElementById("teacherFreeVisibilityCard").classList.remove("hidden");
     await populateCommonReferenceSelects();
     await loadTimetablePage();
     await loadSlotTimingSettings();
@@ -841,7 +883,17 @@ async function initTimetablePage() {
       if (!event.target.value) return;
       const result = await apiFetch(`${API.timetable}/section/${event.target.value}`);
       syncSlotLabels(result.slots);
-      renderTimetableGrid(result.data);
+      const selectedLabel = event.target.options[event.target.selectedIndex]?.textContent || "Selected Section";
+      renderSectionTimetableGrid(result.data, selectedLabel);
+    });
+
+    document.getElementById("printSectionGridBtn").addEventListener("click", () => {
+      const hasGrid = document.getElementById("gridContainer").querySelector("table");
+      if (!hasGrid) {
+        showMessage("timetableMessage", "Select a section first to print the section timetable.", "danger");
+        return;
+      }
+      printOnlyTarget("primaryGridCard");
     });
 
     document.getElementById("teacherGridSearchBtn").addEventListener("click", async () => {
@@ -849,7 +901,12 @@ async function initTimetablePage() {
     });
 
     document.getElementById("printTeacherGridBtn").addEventListener("click", () => {
-      window.print();
+      const hasGrid = document.getElementById("teacherGridContainer").querySelector("table");
+      if (!hasGrid) {
+        showMessage("timetableMessage", "Search for a teacher first to print the teacher timetable.", "danger");
+        return;
+      }
+      printOnlyTarget("teacherPrintableCard");
     });
 
     document.getElementById("freeTeacherSearchBtn").addEventListener("click", async () => {
@@ -911,21 +968,22 @@ async function initTimetablePage() {
   document.getElementById("adminExtraLecturePanel").classList.add("hidden");
   document.getElementById("teacherGridPanel").classList.add("hidden");
   document.getElementById("supportPanel").classList.add("hidden");
-  document.getElementById("teacherFreePanel").classList.add("hidden");
+  document.getElementById("primaryGridCard").classList.remove("hidden");
+  document.getElementById("teacherPrintableCard").classList.add("hidden");
+  document.getElementById("teacherFreeVisibilityCard").classList.add("hidden");
   document.getElementById("supportSummary").innerHTML = "";
 
   if (CURRENT_USER.role === "teacher") {
+    CURRENT_PROFILE = (await apiFetch(`${API.admin}/profile`)).data;
     const timetableMeta = await apiFetch(API.timetable);
     syncSlotLabels(timetableMeta.slots);
     const result = await apiFetch(`${API.teachers}/portal/me`);
     renderPortalTimetableRows(result.data.schedule, "teacher");
-    renderTimetableGrid(result.data.schedule);
+    renderTeacherSelfTimetableGrid(result.data.schedule);
     document.getElementById("sectionGridPanel").classList.add("hidden");
     document.getElementById("teacherExtraLecturePanel").classList.remove("hidden");
     document.getElementById("teacherExtraLectureRequestsPanel").classList.remove("hidden");
     document.getElementById("roomFreeGridPanel").classList.remove("hidden");
-    document.getElementById("freeTeacherGridContainer").innerHTML = '<p class="text-muted mb-0">Teacher free-slot grid is available in the teacher request panel for the selected date.</p>';
-    document.getElementById("teacherGridContainer").innerHTML = '<p class="text-muted mb-0">Teacher-wise printable grid is available for admin only.</p>';
     await loadTeacherExtraLectureDashboard();
     await loadTeacherExtraLectureRequests();
 
@@ -963,18 +1021,17 @@ async function initTimetablePage() {
     return;
   }
 
+  CURRENT_PROFILE = (await apiFetch(`${API.admin}/profile`)).data;
   const timetableMeta = await apiFetch(API.timetable);
   syncSlotLabels(timetableMeta.slots);
   const result = await apiFetch(`${API.students}/portal/me`);
   renderPortalTimetableRows(result.data, "student");
-  renderTimetableGrid(result.data);
+  renderStudentTimetableGrid(result.data);
   document.getElementById("sectionGridPanel").classList.add("hidden");
   document.getElementById("roomFreeGridPanel").classList.add("hidden");
   document.getElementById("teacherExtraLecturePanel").classList.add("hidden");
   document.getElementById("teacherExtraLectureRequestsPanel").classList.add("hidden");
-  document.getElementById("teacherFreePanel").classList.add("hidden");
-  document.getElementById("teacherGridContainer").innerHTML = '<p class="text-muted mb-0">Teacher-wise printable grid is available for admin only.</p>';
-  document.getElementById("freeTeacherGridContainer").innerHTML = '<p class="text-muted mb-0">Teacher free-slot visibility is available for admin only.</p>';
+  document.getElementById("teacherGridPanel").classList.add("hidden");
 }
 
 async function loadTimetablePage() {
@@ -1181,6 +1238,7 @@ async function loadTeacherGrid() {
   if (!search) {
     document.getElementById("teacherGridContainer").innerHTML = '<p class="text-muted mb-0">Enter a teacher name or code to view the weekly grid.</p>';
     document.getElementById("teacherGridSummary").innerHTML = "";
+    document.getElementById("teacherGridPrintMeta").innerHTML = "";
     return;
   }
 
@@ -1195,9 +1253,15 @@ async function loadTeacherGrid() {
       Available Periods: ${result.data.summary.available_periods} |
       Unavailable Periods: ${result.data.summary.unavailable_periods}
     `;
+    document.getElementById("teacherGridPrintMeta").innerHTML = `
+      <strong>Automated Time Table Management System</strong><br>
+      Teacher Timetable: ${result.data.teacher.teacher_code} - ${result.data.teacher.full_name}<br>
+      Assigned Periods: ${result.data.summary.assigned_periods} | Free Periods: ${result.data.summary.free_periods}
+    `;
   } catch (error) {
     document.getElementById("teacherGridContainer").innerHTML = `<div class="alert alert-danger mb-0">${error.message}</div>`;
     document.getElementById("teacherGridSummary").innerHTML = "";
+    document.getElementById("teacherGridPrintMeta").innerHTML = "";
   }
 }
 
@@ -1360,7 +1424,7 @@ window.markExtraLectureSeen = async function markExtraLectureSeen(id) {
   await loadTeacherExtraLectureRequests();
 };
 
-function renderTimetableGrid(entries) {
+function renderWeeklyGrid(entries, renderer) {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const slots = Object.keys(SLOT_LABELS)
     .map(Number)
@@ -1369,19 +1433,19 @@ function renderTimetableGrid(entries) {
   const html = `<table class="table table-bordered timetable-grid">
     <thead>
       <tr>
-        <th>Time / Day</th>
-        ${days.map((day) => `<th>${day}</th>`).join("")}
+        <th>Day / Slot</th>
+        ${slots.map((slot) => `<th>${SLOT_LABELS[slot]}</th>`).join("")}
       </tr>
     </thead>
     <tbody>
-      ${slots
+      ${days
         .map(
-          (slot) => `<tr>
-            <th>${SLOT_LABELS[slot]}</th>
-            ${days
-              .map((day) => {
+          (day) => `<tr>
+            <th>${day}</th>
+            ${slots
+              .map((slot) => {
                 const match = entries.find((item) => item.day_of_week === day && Number(item.slot_number) === slot);
-                return `<td>${match ? `<div class="grid-cell"><strong>${match.subject_name}</strong><br>${match.teacher_name || match.class_name || ""}<br>${match.room_name || ""}</div>` : "-"}</td>`;
+                return `<td>${match ? renderer(match) : `<div class="grid-free">Free</div>`}</td>`;
               })
               .join("")}
           </tr>`
@@ -1390,40 +1454,53 @@ function renderTimetableGrid(entries) {
     </tbody>
   </table>`;
 
-  document.getElementById("gridContainer").innerHTML = html;
+  return html;
+}
+
+function renderSectionTimetableGrid(entries, sectionLabel = "Selected Section") {
+  document.getElementById("primaryGridTitle").textContent = "Section Weekly Timetable";
+  document.getElementById("primaryGridMeta").innerHTML = `
+    <strong>Automated Time Table Management System</strong><br>
+    Section: ${sectionLabel}<br>
+    Weekly timetable grid
+  `;
+  document.getElementById("gridContainer").innerHTML = renderWeeklyGrid(
+    entries,
+    (entry) => `<div class="grid-cell"><div class="grid-title">${entry.subject_name}</div><div class="grid-meta">${entry.teacher_name || "-"}</div><div class="grid-meta">${entry.room_name || "-"}</div></div>`
+  );
+}
+
+function renderStudentTimetableGrid(entries) {
+  document.getElementById("primaryGridTitle").textContent = "Student Weekly Timetable";
+  document.getElementById("primaryGridMeta").innerHTML = `
+    <strong>Automated Time Table Management System</strong><br>
+    Student: ${CURRENT_PROFILE?.full_name || CURRENT_USER.name}<br>
+    Department: ${CURRENT_PROFILE?.department_name || "-"} | Class / Section: ${CURRENT_PROFILE?.class_name || "-"} ${CURRENT_PROFILE?.section_name || ""}
+  `;
+  document.getElementById("gridContainer").innerHTML = renderWeeklyGrid(
+    entries,
+    (entry) => `<div class="grid-cell"><div class="grid-title">${entry.subject_name}</div><div class="grid-meta">${entry.teacher_name || "-"}</div><div class="grid-meta">${entry.room_name || "-"}</div></div>`
+  );
+}
+
+function renderTeacherSelfTimetableGrid(entries) {
+  document.getElementById("primaryGridTitle").textContent = "Teacher Weekly Timetable";
+  document.getElementById("primaryGridMeta").innerHTML = `
+    <strong>Automated Time Table Management System</strong><br>
+    Teacher: ${CURRENT_PROFILE?.teacher_code ? `${CURRENT_PROFILE.teacher_code} - ` : ""}${CURRENT_PROFILE?.full_name || CURRENT_USER.name}<br>
+    Department: ${CURRENT_PROFILE?.department_name || "-"}
+  `;
+  document.getElementById("gridContainer").innerHTML = renderWeeklyGrid(
+    entries,
+    (entry) => `<div class="grid-cell"><div class="grid-title">${entry.subject_name}</div><div class="grid-meta">${entry.class_name} ${entry.section_name}</div><div class="grid-meta">${entry.room_name || "-"}</div></div>`
+  );
 }
 
 function renderTeacherTimetableGrid(entries) {
-  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const slots = Object.keys(SLOT_LABELS)
-    .map(Number)
-    .sort((a, b) => a - b);
-
-  const html = `<table class="table table-bordered timetable-grid">
-    <thead>
-      <tr>
-        <th>Time / Day</th>
-        ${days.map((day) => `<th>${day}</th>`).join("")}
-      </tr>
-    </thead>
-    <tbody>
-      ${slots
-        .map(
-          (slot) => `<tr>
-            <th>${SLOT_LABELS[slot]}</th>
-            ${days
-              .map((day) => {
-                const match = entries.find((item) => item.day_of_week === day && Number(item.slot_number) === slot);
-                return `<td>${match ? `<div class="grid-cell"><strong>${match.subject_name}</strong><br>${match.class_name} ${match.section_name}<br>${match.room_name}</div>` : "-"}</td>`;
-              })
-              .join("")}
-          </tr>`
-        )
-        .join("")}
-    </tbody>
-  </table>`;
-
-  document.getElementById("teacherGridContainer").innerHTML = html;
+  document.getElementById("teacherGridContainer").innerHTML = renderWeeklyGrid(
+    entries,
+    (entry) => `<div class="grid-cell"><div class="grid-title">${entry.subject_name}</div><div class="grid-meta">${entry.class_name} ${entry.section_name}</div><div class="grid-meta">${entry.room_name || "-"}</div></div>`
+  );
 }
 
 function renderFreeTeacherGrid(grid, totalTeachers = 0) {
@@ -1544,6 +1621,166 @@ function renderSimpleTable(targetId, headers, rows) {
   </div>`;
 
   document.getElementById(targetId).innerHTML = table;
+}
+
+async function initProfilePage() {
+  await loadProfilePage();
+
+  document.getElementById("profileForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const payload = Object.fromEntries(new FormData(event.target).entries());
+      const result = await apiFetch(`${API.admin}/profile`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      showMessage("profileMessage", result.message);
+      if (result.data?.full_name) {
+        document.getElementById("currentUserName").textContent = result.data.full_name;
+      }
+      populateProfileForm(result.data);
+      populateProfileSummary(result.data);
+    } catch (error) {
+      showMessage("profileMessage", error.message, "danger");
+    }
+  });
+
+  document.getElementById("passwordForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const payload = Object.fromEntries(new FormData(event.target).entries());
+      const result = await apiFetch(`${API.admin}/profile/password`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      showMessage("profileMessage", result.message);
+      event.target.reset();
+    } catch (error) {
+      showMessage("profileMessage", error.message, "danger");
+    }
+  });
+
+  const resetButton = document.getElementById("managedUserResetBtn");
+  if (resetButton) {
+    resetButton.addEventListener("click", async () => {
+      const userId = document.getElementById("managedUserSelect").value;
+      const newPassword = document.getElementById("managedUserNewPassword").value.trim();
+      if (!userId || !newPassword) {
+        showMessage("profileMessage", "Select a user and enter a new password.", "danger");
+        return;
+      }
+
+      try {
+        const result = await apiFetch(`${API.admin}/managed-users/password`, {
+          method: "PUT",
+          body: JSON.stringify({
+            user_id: Number(userId),
+            new_password: newPassword
+          })
+        });
+        showMessage("profileMessage", result.message);
+        document.getElementById("managedUserNewPassword").value = "";
+        await loadProfilePage();
+      } catch (error) {
+        showMessage("profileMessage", error.message, "danger");
+      }
+    });
+  }
+}
+
+async function loadProfilePage() {
+  const result = await apiFetch(`${API.admin}/profile`);
+  populateProfileForm(result.data);
+  populateProfileSummary(result.data);
+
+  if (CURRENT_USER.role === "admin") {
+    document.getElementById("managedUsersPanel").classList.remove("hidden");
+    populateManagedUsers(result.managedUsers || { teachers: [], students: [] });
+  } else {
+    document.getElementById("managedUsersPanel").classList.add("hidden");
+  }
+}
+
+function populateProfileForm(profile) {
+  document.getElementById("profileRole").value = (profile.role || CURRENT_USER.role || "").toUpperCase();
+  document.getElementById("profileUsername").value = profile.username || CURRENT_USER.username || "";
+  document.getElementById("profileFullName").value = profile.full_name || "";
+  document.getElementById("profileEmail").value = profile.email || "";
+  document.getElementById("profilePhone").value = profile.phone || "";
+  document.getElementById("profileDepartment").value = profile.department_name || "-";
+
+  const teacherCodeWrap = document.getElementById("profileTeacherCodeWrap");
+  const rollNumberWrap = document.getElementById("profileRollNumberWrap");
+  const teacherCodeInput = document.getElementById("profileTeacherCode");
+  const rollNumberInput = document.getElementById("profileRollNumber");
+
+  teacherCodeInput.value = profile.teacher_code || "";
+  rollNumberInput.value = profile.roll_number || "";
+
+  if (CURRENT_USER.role === "teacher") {
+    teacherCodeWrap.classList.remove("hidden");
+    rollNumberWrap.classList.add("hidden");
+    rollNumberInput.value = "";
+  } else if (CURRENT_USER.role === "student") {
+    teacherCodeWrap.classList.add("hidden");
+    teacherCodeInput.value = "";
+    rollNumberWrap.classList.remove("hidden");
+  } else {
+    teacherCodeWrap.classList.add("hidden");
+    rollNumberWrap.classList.add("hidden");
+    teacherCodeInput.value = "";
+    rollNumberInput.value = "";
+  }
+}
+
+function populateProfileSummary(profile) {
+  const summaryItems = [
+    `Full Name: ${profile.full_name || "-"}`,
+    `Username: ${profile.username || CURRENT_USER.username || "-"}`,
+    `Email: ${profile.email || "-"}`,
+    `Phone: ${profile.phone || "-"}`,
+    `Role: ${(profile.role || CURRENT_USER.role || "-").toUpperCase()}`,
+    `Department: ${profile.department_name || "-"}`
+  ];
+
+  if (profile.teacher_code) {
+    summaryItems.push(`Teacher Code: ${profile.teacher_code}`);
+  }
+
+  if (profile.roll_number) {
+    summaryItems.push(`Student Roll No: ${profile.roll_number}`);
+  }
+
+  if (profile.class_name && profile.section_name) {
+    summaryItems.push(`Class / Section: ${profile.class_name} ${profile.section_name}`);
+  }
+
+  document.getElementById("profileSummaryList").innerHTML = summaryItems
+    .map((item) => `<li class="list-group-item">${item}</li>`)
+    .join("");
+}
+
+function populateManagedUsers(managedUsers) {
+  const users = [...(managedUsers.teachers || []), ...(managedUsers.students || [])];
+  fillSelect(
+    "managedUserSelect",
+    users,
+    "user_id",
+    (item) => `${item.role.toUpperCase()} - ${item.full_name} (${item.username})`,
+    "Select User"
+  );
+
+  document.getElementById("managedUsersRows").innerHTML = users
+    .map((item) => `<tr>
+      <td>${item.role}</td>
+      <td>${item.full_name}</td>
+      <td>${item.username}</td>
+      <td>${item.code_or_roll || "-"}</td>
+      <td>${item.email || "-"}</td>
+      <td>${item.phone || "-"}</td>
+      <td>${item.department_name || "-"}</td>
+    </tr>`)
+    .join("");
 }
 
 async function populateCommonReferenceSelects() {

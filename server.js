@@ -69,6 +69,7 @@ app.get("/subjects", requireAuth, serveProtectedPage("subjects.html", ["admin"])
 app.get("/classrooms", requireAuth, serveProtectedPage("classrooms.html", ["admin"]));
 app.get("/timetable", requireAuth, serveProtectedPage("timetable.html", ["admin", "teacher", "student"]));
 app.get("/reports", requireAuth, serveProtectedPage("reports.html", ["admin"]));
+app.get("/profile", requireAuth, serveProtectedPage("profile.html", ["admin", "teacher", "student"]));
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });
